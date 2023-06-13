@@ -54,7 +54,7 @@ flake-registry = $TEST_ROOT/registry.json
 show-trace = true
 host-name = test-host
 include nix.conf.extra
-trusted-users = $(whoami)
+trusted-users = $(id -u)
 ${_NIX_TEST_EXTRA_CONFIG:-}
 EOF
 
