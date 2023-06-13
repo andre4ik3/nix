@@ -58,7 +58,7 @@ show-trace = true
 host-name = test-host
 build-provenance-tags = {"pr": "1234", "branch": "main"}
 include nix.conf.extra
-trusted-users = $(whoami)
+trusted-users = $(id -u)
 ${_NIX_TEST_EXTRA_CONFIG:-}
 EOF
 
