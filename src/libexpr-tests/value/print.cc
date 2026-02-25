@@ -3,6 +3,9 @@
 
 #include "nix/expr/value.hh"
 #include "nix/expr/print.hh"
+#include "nix/util/canon-path.hh"
+#include "nix/util/source-path.hh"
+#include "nix/util/terminal.hh"
 
 namespace nix {
 
@@ -719,6 +722,24 @@ TEST_F(ValuePrintingTests, ansiColorsListElided)
             "[ " ANSI_CYAN "1" ANSI_NORMAL " " ANSI_FAINT "«2 items elided»" ANSI_NORMAL " ]",
             PrintOptions{.ansiColors = true, .maxListItems = 1});
     }
+}
+
+TEST_F(ValuePrintingTests, osc8InAttrSets)
+{
+    PosTable::Origin origin = state.positions.addOrigin(state.rootPath(CanonPath("/dev/null")), 0);
+    auto pos = state.positions.add(origin, 0);
+    BindingsBuilder builder = state.buildBindings(1);
+
+    Value vZero;
+    vZero.mkInt(0);
+
+    builder.insert(state.symbols.create("x"), &vZero, pos);
+    Value vAttrs;
+    vAttrs.mkAttrs(builder.finish());
+
+    auto hyperlink = makeHyperlink("x", makeHyperlinkLocalPath("/dev/null", 1));
+
+    test(vAttrs, "{ " + hyperlink + " = " ANSI_CYAN "0" ANSI_NORMAL "; }", PrintOptions{.ansiColors = true});
 }
 
 } // namespace nix
