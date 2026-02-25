@@ -136,7 +136,7 @@ isDaemonNewer () {
     [[ -n "${NIX_DAEMON_PACKAGE:-}" ]] || return 0
     local requiredVersion="$1"
     local daemonVersion
-    daemonVersion=$("$NIX_DAEMON_PACKAGE/bin/nix" daemon --version | sed 's/.*) //')
+    daemonVersion=$("$NIX_DAEMON_PACKAGE/bin/nix" daemon --version | sed -n 's/.*) //p')
     [[ $(nix eval --expr "builtins.compareVersions ''$daemonVersion'' ''$requiredVersion''") -ge 0 ]]
 }
 
