@@ -38,6 +38,7 @@ extern "C" {
 #include "nix/util/finally.hh"
 #include "nix/cmd/markdown.hh"
 #include "nix/store/local-fs-store.hh"
+#include "nix/store/store-open.hh"
 #include "nix/expr/print.hh"
 #include "nix/util/ref.hh"
 #include "nix/expr/value.hh"
@@ -134,7 +135,7 @@ struct NixRepl : AbstractNixRepl, detail::ReplCompleterMixin, gc
 
     void loadFile(const std::filesystem::path & path);
     void loadFlake(const std::string & flakeRef);
-    void loadFiles();
+    void loadFiles(bool applyReplOverlays = true);
     void loadFlakes();
     void reloadFilesAndFlakes();
     void showLastLoaded();
@@ -144,6 +145,12 @@ struct NixRepl : AbstractNixRepl, detail::ReplCompleterMixin, gc
     ExprAttrs * parseReplBindings(std::string s);
     void evalString(std::string s, Value & v);
     void loadDebugTraceEnv(DebugTrace & dt);
+    void loadReplOverlays();
+    Value * replOverlays();
+    Value * getReplOverlaysEvalFunction();
+    Value * replInitInfo();
+    Value * bindingsToAttrs();
+    Value * evalFile(const SourcePath & path);
 
     void printValue(
         std::ostream & str,
@@ -891,11 +898,12 @@ void NixRepl::reloadFilesAndFlakes()
 {
     initEnv();
 
-    loadFiles();
+    loadFiles(false);
     loadFlakes();
+    loadReplOverlays();
 }
 
-void NixRepl::loadFiles()
+void NixRepl::loadFiles(bool applyReplOverlays)
 {
     // loadFile() rebuilds loadedFiles; keep failed entries and continue.
     decltype(loadedFiles) old;
@@ -919,6 +927,90 @@ void NixRepl::loadFiles()
             printMsg(lvlError, e.msg());
         }
     }
+
+    if (applyReplOverlays)
+        loadReplOverlays();
+}
+
+void NixRepl::loadReplOverlays()
+{
+    if (evalSettings.replOverlays.get().empty())
+        return;
+
+    notice("Loading '%1%'...", "repl-overlays");
+
+    auto replOverlaysEvalFunction = getReplOverlaysEvalFunction();
+
+    Value & newAttrs(*state->allocValue());
+    std::array<Value *, 3> args = {replInitInfo(), bindingsToAttrs(), replOverlays()};
+    state->callFunction(*replOverlaysEvalFunction, args, newAttrs, replOverlaysEvalFunction->determinePos(noPos));
+
+    addAttrsToScope(newAttrs);
+}
+
+Value * NixRepl::getReplOverlaysEvalFunction()
+{
+    auto evalReplOverlaysPath = state->rootPath(CanonPath::root / "repl-overlays.nix");
+
+    Value * replOverlaysEvalFunction = state->allocValue();
+    auto code =
+#include "repl-overlays.nix.gen.hh"
+        ;
+    auto expr = state->parseExprFromString(code, evalReplOverlaysPath, state->staticBaseEnv);
+
+    state->eval(expr, *replOverlaysEvalFunction);
+
+    return replOverlaysEvalFunction;
+}
+
+Value * NixRepl::replOverlays()
+{
+    Value * replOverlays = state->allocValue();
+
+    auto list = state->buildList(evalSettings.replOverlays.get().size());
+    size_t i = 0;
+    for (const auto & path : evalSettings.replOverlays.get()) {
+        debug("Loading '%1%' path '%2%'...", "repl-overlays", PathFmt(path));
+
+        SourcePath overlayPath = (evalSettings.pureEval || evalSettings.restrictEval)
+                                     ? SourcePath{getFSSourceAccessor(), CanonPath(absPath(path).string())}
+                                     : lookupFileArg(*state, path.string());
+        auto overlay = evalFile(overlayPath);
+
+        if (!overlay->isLambda()) {
+            state->error<TypeError>("Expected `repl-overlays` to be a lambda but found %1%", showType(*overlay))
+                .atPos(overlay->determinePos(noPos))
+                .debugThrow();
+        }
+
+        if (auto formals = overlay->lambda().fun->getFormals(); formals && !formals->ellipsis) {
+            state
+                ->error<TypeError>(
+                    "Expected first argument of %1% to have %2% to allow future versions of Nix to add additional attributes to the argument",
+                    "repl-overlays",
+                    "...")
+                .atPos(overlay->determinePos(noPos))
+                .debugThrow();
+        }
+
+        list[i++] = overlay;
+    }
+
+    replOverlays->mkList(list);
+    return replOverlays;
+}
+
+Value * NixRepl::replInitInfo()
+{
+    auto builder = state->buildBindings(1);
+
+    Value * currentSystem = state->allocValue();
+    currentSystem->mkString(evalSettings.getCurrentSystem(), state->mem);
+    builder.insert(state->symbols.create("currentSystem"), currentSystem);
+
+    Value * info = state->allocValue();
+    info->mkAttrs(builder.finish());
+    return info;
 }
 
 void NixRepl::loadFlakes()
@@ -990,6 +1082,17 @@ void NixRepl::addVarToScope(const Symbol name, Value & v)
     varNames.emplace(state->symbols[name]);
 }
 
+Value * NixRepl::bindingsToAttrs()
+{
+    auto builder = state->buildBindings(staticEnv->vars.size());
+    for (auto & [symbol, displacement] : staticEnv->vars)
+        builder.insert(symbol, env->values[displacement]);
+
+    Value * attrs = state->allocValue();
+    attrs->mkAttrs(builder.finish());
+    return attrs;
+}
+
 Expr * NixRepl::parseString(std::string s)
 {
     try {
@@ -1028,6 +1131,15 @@ void NixRepl::evalString(std::string s, Value & v)
     Expr * e = parseString(s);
     e->eval(*state, *env, v);
     state->forceValue(v, v.determinePos(noPos));
+}
+
+Value * NixRepl::evalFile(const SourcePath & path)
+{
+    auto expr = state->parseExprFromFile(path, staticEnv);
+    Value * result = state->allocValue();
+    expr->eval(*state, *env, *result);
+    state->forceValue(*result, result->determinePos(noPos));
+    return result;
 }
 
 void NixRepl::runNix(const std::string & program, OsStrings args)

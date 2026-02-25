@@ -31,6 +31,7 @@ nixMake.mkComponent {
   ];
 
   files = nixMake.commonSupportFiles // {
+    "repl-overlays.nix.gen.hh" = nixMake.mkStringHeader ./repl-overlays.nix;
     "call-flake-schemas.nix.gen.hh" = nixMake.mkStringHeader ./call-flake-schemas.nix;
     "builtin-flake-schemas/flake.nix.gen.hh" = nixMake.mkStringHeader ./builtin-flake-schemas/flake.nix;
   };
