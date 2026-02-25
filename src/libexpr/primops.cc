@@ -1436,7 +1436,6 @@ static void prim_derivationStrictGeneric(EvalState & state, const PosIdx pos, Va
     try {
         derivationStrictInternal(state, drvName, attrs, v, state.evalContext.provenance, acceptMeta);
     } catch (Error & e) {
-        Pos pos = state.positions[nameAttr->pos];
         /*
          * Here we make two abuses of the error system
          *
@@ -1454,13 +1453,7 @@ static void prim_derivationStrictGeneric(EvalState & state, const PosIdx pos, Va
          * often results from the composition of several functions
          * (derivationStrict, derivation, mkDerivation, mkPythonModule, etc.)
          */
-        e.addTrace(
-            nullptr,
-            HintFmt(
-                "while evaluating derivation '%s'\n"
-                "  whose name attribute is located at %s",
-                drvName,
-                pos));
+        e.pushTrace(Trace::fromDrv(state.positions[nameAttr->pos], std::string(drvName)));
         throw;
     }
 }
@@ -1751,8 +1744,7 @@ static void derivationStrictInternal(
             }
 
         } catch (Error & e) {
-            e.addTrace(
-                state.positions[i->pos], HintFmt("while evaluating attribute '%1%' of derivation '%2%'", key, drvName));
+            e.pushTrace(Trace::fromDrvAttr(state.positions[i->pos], std::string(drvName), std::string(key)));
             throw;
         }
     }
