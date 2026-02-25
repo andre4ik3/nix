@@ -63,6 +63,16 @@ std::filesystem::path
 absPath(const std::filesystem::path & path, const std::filesystem::path * dir = nullptr, bool resolveSymlinks = false);
 
 /**
+ * Resolve a tilde path like `~/foo` into an absolute path.
+ *
+ * If `home` is provided, it is substituted for `~/` at the start of `path`.
+ * If `home` is not provided, `~/...` is rejected.
+ *
+ * Paths starting with `~` but not `~/` are always rejected.
+ */
+Path tildePath(PathView path, const std::optional<PathView> & home = std::nullopt);
+
+/**
  * Canonicalise a path by removing all `.` or `..` components and
  * double or trailing slashes.  Optionally resolves all symlink
  * components such that each component of the resulting path is *not*
