@@ -145,7 +145,11 @@ struct NixRepl : AbstractNixRepl, detail::ReplCompleterMixin, gc
     void evalString(std::string s, Value & v);
     void loadDebugTraceEnv(DebugTrace & dt);
 
-    void printValue(std::ostream & str, Value & v, unsigned int maxDepth = std::numeric_limits<unsigned int>::max())
+    void printValue(
+        std::ostream & str,
+        Value & v,
+        unsigned int maxDepth = std::numeric_limits<unsigned int>::max(),
+        bool replDerivation = false)
     {
         // Hide the progress bar during printing because it might interfere
         auto suspension = logger->suspend();
@@ -156,7 +160,8 @@ struct NixRepl : AbstractNixRepl, detail::ReplCompleterMixin, gc
             PrintOptions{
                 .ansiColors = true,
                 .force = true,
-                .derivationPaths = true,
+                .derivationPaths = !replDerivation,
+                .replDerivation = replDerivation,
                 .maxDepth = maxDepth,
                 .prettyIndent = 2,
                 .errors = ErrorPrintBehavior::ThrowTopLevel,
@@ -688,6 +693,8 @@ ProcessLineResult NixRepl::processLine(std::string line)
         auto suspension = logger->suspend();
         if (v.type() == nString) {
             std::cout << v.string_view();
+        } else if (v.type() == nAttrs && state->isDerivation(v)) {
+            printValue(std::cout, v, 2, true);
         } else {
             printValue(std::cout, v);
         }
