@@ -100,6 +100,7 @@ if host_machine.system() != 'windows'
 endif
 
 sources += [
+  gen_header.process('repl-overlays.nix'),
   gen_header.process('call-flake-schemas.nix'),
   gen_header.process('builtin-flake-schemas.nix'),
 ]
