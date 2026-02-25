@@ -1,7 +1,19 @@
+#include "cmd-config-private.hh"
+
+#if USE_READLINE
+#  include <readline/readline.h>
+#else
+extern "C" {
+#  include <editline.h>
+}
+#endif
+
+#include <array>
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <string_view>
 
 #include "nix/util/error.hh"
 #include "nix/cmd/repl-interacter.hh"
@@ -35,6 +47,7 @@
 #include "nix/util/strings.hh"
 
 namespace nix {
+using namespace std::literals::string_view_literals;
 
 /**
  * Returned by `NixRepl::processLine`.
@@ -59,6 +72,36 @@ enum class ProcessLineResult {
 
 struct NixRepl : AbstractNixRepl, detail::ReplCompleterMixin, gc
 {
+    /* clang-format: off */
+    static constexpr std::array COMMANDS = {
+        "add"sv,         "a"sv,
+        "load"sv,        "l"sv,
+        "load-flake"sv,  "lf"sv,
+        "last-loaded"sv, "ll"sv,
+        "reload"sv,      "r"sv,
+        "edit"sv,        "e"sv,
+        "t"sv,           "u"sv,
+        "b"sv,           "bl"sv,
+        "i"sv,           "sh"sv,
+        "log"sv,         "print"sv,
+        "p"sv,           "quit"sv,
+        "q"sv,           "doc"sv,
+        "te"sv,          "trace-enable"sv,
+        "help"sv,        "?"sv,
+    };
+
+    static constexpr std::array DEBUG_COMMANDS = {
+        "env"sv,
+        "bt"sv,
+        "backtrace"sv,
+        "st"sv,
+        "c"sv,
+        "continue"sv,
+        "s"sv,
+        "step"sv,
+    };
+    /* clang-format: on */
+
     size_t debugTraceIndex;
 
     std::list<std::filesystem::path> loadedFiles;
@@ -246,6 +289,28 @@ ReplExitStatus NixRepl::mainLoop()
 StringSet NixRepl::completePrefix(const std::string & prefix)
 {
     StringSet completions;
+
+    // If the line begins with ':', prefer :command completion. editline does
+    // not include the leading ':' in the completion callback prefix, so check
+    // the global line buffer to detect this mode.
+    if (rl_line_buffer != nullptr && rl_line_buffer[0] == ':') {
+        for (const auto & colonCmd : COMMANDS) {
+            if (colonCmd.starts_with(prefix))
+                completions.insert(std::string(colonCmd));
+        }
+
+        if (state->debugRepl) {
+            for (const auto & colonCmd : DEBUG_COMMANDS) {
+                if (colonCmd.starts_with(prefix))
+                    completions.insert(std::string(colonCmd));
+            }
+        }
+
+        // Only return colon command completions when they match; otherwise
+        // continue into expression completion (e.g. ':b pkgs.hel<TAB>').
+        if (!completions.empty())
+            return completions;
+    }
 
     size_t start = prefix.find_last_of(" \n\r\t(){}[]");
     std::string prev, cur;
