@@ -845,8 +845,8 @@ static void opVerifyPath(Strings opFlags, Strings opArgs)
             printError(
                 "path '%s' was modified! expected hash '%s', got '%s'",
                 store->printStorePath(path),
-                info->narHash.to_string(HashFormat::Nix32, true),
-                current.hash.to_string(HashFormat::Nix32, true));
+                info->narHash.to_string(HashFormat::SRI, true),
+                current.hash.to_string(HashFormat::SRI, true));
             status = 1;
         }
     }

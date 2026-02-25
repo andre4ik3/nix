@@ -38,8 +38,8 @@ void exportPaths(Store & store, const StorePathSet & paths, Sink & sink, unsigne
             throw Error(
                 "hash of path '%s' has changed from '%s' to '%s'!",
                 store.printStorePath(info.path),
-                info.narHash.to_string(HashFormat::Nix32, true),
-                hash.to_string(HashFormat::Nix32, true));
+                info.narHash.to_string(HashFormat::SRI, true),
+                hash.to_string(HashFormat::SRI, true));
     };
 
     switch (version) {
