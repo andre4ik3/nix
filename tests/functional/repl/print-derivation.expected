@@ -1,0 +1,14 @@
+Nix <nix version>
+Type :? for help.
+
+nix-repl> :a { fakeDrv = let drvAttrs = { builder = "meow"; system = "meower"; name = "mrowmrow"; }; in { inherit (drvAttrs) builder system name; inherit drvAttrs; type = "derivation"; }; }
+Added <number omitted> variables.
+
+nix-repl> :p fakeDrv
+{
+  builder = "meow";
+  drvAttrs = «3 attributes elided»;
+  name = "mrowmrow";
+  system = "meower";
+  type = "derivation";
+}

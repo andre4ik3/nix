@@ -1,0 +1,2 @@
+:a { fakeDrv = let drvAttrs = { builder = "meow"; system = "meower"; name = "mrowmrow"; }; in { inherit (drvAttrs) builder system name; inherit drvAttrs; type = "derivation"; }; }
+:p fakeDrv
