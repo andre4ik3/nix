@@ -2,6 +2,7 @@
 ///@file
 
 #include <limits>
+#include <optional>
 #include <string>
 
 #include "nix/util/file-descriptor.hh"
@@ -43,6 +44,24 @@ void updateWindowSize();
  * by `updateWindowSize()`.
  */
 std::pair<unsigned short, unsigned short> getWindowSize();
+
+/**
+ * Makes a terminal hyperlink using OSC 8.
+ *
+ * If the link target is too long (700 bytes is the current limit), the link is
+ * skipped and the link text is emitted as-is. This limits the maximum amount
+ * of context required to a manageable amount that doesn't break any terminals.
+ *
+ * See: https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
+ *
+ * @see makeHyperlinkLocalPath
+ */
+std::string makeHyperlink(std::string_view linkText, std::string_view target);
+
+/**
+ * Creates an OSC 8 compliant `file://` path for a given filesystem path.
+ */
+std::string makeHyperlinkLocalPath(std::string_view path, std::optional<unsigned> lineNumber = std::nullopt);
 
 /**
  * @return The number of columns of the terminal, or std::numeric_limits<unsigned int>::max() if unknown.

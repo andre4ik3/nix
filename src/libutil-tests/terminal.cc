@@ -2,6 +2,7 @@
 
 #include <limits.h>
 #include <gtest/gtest.h>
+#include <regex>
 
 namespace nix {
 
@@ -67,6 +68,26 @@ TEST(filterANSIEscapes, osc8_bell_as_sep)
     //   https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
     ASSERT_EQ(filterANSIEscapes("\e]8;;http://example.com\aThis is a link\e]8;;\a"), "This is a link");
     ASSERT_EQ(filterANSIEscapes("\e]8;;http://example.com\a\\This is a link\e]8;;\a"), "\\This is a link");
+}
+
+TEST(makeHyperlink, works)
+{
+    auto big = std::string(701, 'A');
+    EXPECT_EQ(makeHyperlink(big, "meow"), "\e]8;;meow\e\\" + big + "\e]8;;\e\\");
+    EXPECT_EQ(makeHyperlink("meow", big), "meow");
+}
+
+TEST(makeHyperlinkLocalPath, works)
+{
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-magic-numbers): test data
+    auto regex = std::regex{R"(^file://([^/]+)/(.*)$)"};
+    std::smatch match;
+    auto output = makeHyperlinkLocalPath("/a/b/ c", 4);
+
+    ASSERT_TRUE(std::regex_match(output, match, regex));
+    // Hostname has a value.
+    ASSERT_GT(match[1].length(), 0);
+    ASSERT_EQ(match[2].str(), "a/b/%20c#4");
 }
 
 } // namespace nix
