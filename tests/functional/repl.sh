@@ -238,8 +238,6 @@ testReplResponseNoRegex ":log ${simple_path}" "PATH="
 badDiff=0
 badExitCode=0
 
-nixVersion="$(nix --version | sed 's/nix //')"
-
 # TODO: write a repl interacter for testing. Papering over the differences between readline / editline and between platforms is a pain.
 
 # I couldn't get readline and editline to agree on the newline before the prompt,
@@ -273,7 +271,9 @@ filterReplOutput () {
     | sed \
       -e "s@$testDir@/path/to/tests/functional@g" \
       -e "s@$testDirNoUnderscores@/path/to/tests/functional@g" \
-      -e "s@$nixVersion@<nix version>@g" \
+      -e 's/^Nix .*/Nix <nix version>/' \
+      -e "/Added [0-9]* variables/{s@ [0-9]* @ <number omitted> @;n;d}" \
+      -e '/\.\.\. and [0-9]* more; view with :ll/d' \
     | grep -vF $'warning: you don\'t have Internet access; disabling some network-dependent features' \
     ;
 }
