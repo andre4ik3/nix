@@ -508,7 +508,7 @@ void mainWrapped(int argc, char ** argv)
     evalSettings.pureEval = true;
 
 #ifndef _WIN32
-    setLogFormat("bar");
+    setLogFormat("bar-with-logs");
 #endif
     settings.verboseBuild = false;
 
