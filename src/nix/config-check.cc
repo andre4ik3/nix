@@ -10,6 +10,7 @@
 #include "nix/store/worker-protocol.hh"
 #include "nix/util/executable-path.hh"
 #include "nix/store/globals.hh"
+#include "nix/store/profiles.hh"
 
 namespace nix {
 
@@ -75,6 +76,12 @@ struct CmdConfigCheck : StoreCommand
         }
         success &= checkStoreProtocol(store->getProtocol());
         checkTrustedUser(store);
+        {
+            std::filesystem::path profile = getDefaultProfile(settings.getProfileDirsOptions());
+            if (auto envProfile = getEnv("NIX_PROFILE"))
+                profile = *envProfile;
+            checkValidCurrentProfileGeneration(profile);
+        }
 
         if (!success)
             throw Exit(2);
@@ -174,6 +181,31 @@ struct CmdConfigCheck : StoreCommand
         } else {
             checkInfo(fmt("Store uri: %s doesn't have a notion of trusted user", store->config.getHumanReadableURI()));
         }
+    }
+
+    bool checkValidCurrentProfileGeneration(const std::filesystem::path & profile)
+    {
+        Generations generations;
+        std::optional<GenerationNumber> currentGeneration;
+        std::string errStr;
+
+        try {
+            std::tie(generations, currentGeneration) = findGenerations(profile);
+        } catch (const SystemError & e) {
+            errStr = fmt(": %s", e.msg());
+        }
+
+        if (!currentGeneration) {
+            std::ostringstream ss;
+            ss << "Error: current generation cannot be discovered for profile: '" << profile.string() << "'";
+            ss << errStr;
+            return checkFail(ss.str());
+        }
+
+        std::ostringstream ss;
+        ss << "You have " << generations.size() << " generations for profile '" << profile.string() << "'\n";
+        ss << "The current generation number is '" << *currentGeneration << "'";
+        return checkPass(ss.str());
     }
 };
 
