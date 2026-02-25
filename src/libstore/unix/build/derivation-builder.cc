@@ -1420,6 +1420,7 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
         topoSortResult);
 
     OutputPathMap finalOutputs;
+    std::vector<std::pair<Path, std::optional<Path>>> nondeterministic;
 
     for (auto & outputName : sortedOutputNames | std::views::reverse) {
         auto output = get(drv.outputs, outputName);
@@ -1750,20 +1751,14 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
                                 tmpDir);
                         }
 
-                        throw NotDeterministic(
-                            "derivation '%s' may not be deterministic: output %s differs from %s",
-                            store.printStorePath(drvPath),
-                            PathFmt(store.toRealPath(newInfo.path)),
-                            PathFmt(dst));
-                    } else
-                        throw NotDeterministic(
-                            "derivation '%s' may not be deterministic: output %s differs",
-                            store.printStorePath(drvPath),
-                            PathFmt(store.toRealPath(newInfo.path)));
+                        nondeterministic.emplace_back(store.toRealPath(finalDestPath), dst);
+                    } else {
+                        nondeterministic.emplace_back(store.toRealPath(finalDestPath), std::nullopt);
+                    }
                 }
 
                 /* Since we verified the build, it's now ultimately trusted. */
-                if (!oldInfo.ultimate) {
+                else if (!oldInfo.ultimate) {
                     oldInfo.ultimate = true;
                     store.signPathInfo(oldInfo);
                     store.registerValidPaths({{oldInfo.path, oldInfo}});
@@ -1822,6 +1817,17 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
     checkOutputs(store, drvPath, drv.outputs, drvOptions.outputChecks, infos, *act);
 
     if (buildMode == bmCheck) {
+        if (!nondeterministic.empty()) {
+            std::string msg =
+                fmt("derivation '%s' may not be deterministic: outputs differ", store.printStorePath(drvPath));
+            for (auto & [oldPath, newPath] : nondeterministic) {
+                if (newPath)
+                    msg += fmt("\n  output differs: output '%s' differs from '%s'", oldPath, *newPath);
+                else
+                    msg += fmt("\n  output '%s' differs", oldPath);
+            }
+            throw NotDeterministic("%s", msg);
+        }
         return {};
     }
 
