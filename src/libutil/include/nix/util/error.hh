@@ -21,6 +21,7 @@
 #include "nix/util/config.hh"
 
 #include <concepts>
+#include <compare>
 #include <cstring>
 #include <list>
 #include <memory>
@@ -72,11 +73,32 @@ enum struct TracePrint {
     Always,
 };
 
+/**
+ * Information for a trace that encountered a derivation.
+ */
+struct DrvTrace
+{
+    std::string drvName;
+
+    DrvTrace() = delete;
+
+    explicit DrvTrace(std::string drvName)
+        : drvName(std::move(drvName))
+    {
+    }
+
+    friend std::strong_ordering operator<=>(const DrvTrace & lhs, const DrvTrace & rhs) noexcept = default;
+};
+
 struct Trace
 {
     std::shared_ptr<const Pos> pos;
     HintFmt hint;
+    std::optional<DrvTrace> drvTrace;
     TracePrint print = TracePrint::Default;
+
+    static Trace fromDrv(std::shared_ptr<const Pos> pos, std::string drvName);
+    static Trace fromDrvAttr(std::shared_ptr<const Pos> pos, std::string drvName, std::string attrOfDrv);
 };
 
 inline std::strong_ordering operator<=>(const Trace & lhs, const Trace & rhs);
