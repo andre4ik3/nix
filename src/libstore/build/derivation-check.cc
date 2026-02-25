@@ -22,9 +22,8 @@ void checkCAFixedOutput(
         /* Check wanted hash */
         assert(info.ca);
         auto & got = info.ca->hash;
-        if (wanted != got) {
-            /* Throw an error after registering the path as
-               valid. */
+        bool hashMismatch = wanted != got;
+        if (hashMismatch) {
             act.result(
                 resHashMismatch,
                 {
@@ -32,21 +31,30 @@ void checkCAFixedOutput(
                     {"wanted", wanted},
                     {"got", got},
                 });
+        }
+        if (!info.references.empty()) {
+            std::string references;
+            for (auto & reference : info.references)
+                references.append("\n  " + store.printStorePath(reference));
+
+            throw BuildError(
+                BuildResult::Failure::HashMismatch,
+                "the fixed-output derivation '%s' must not reference store paths but "
+                "%d such references were found:%s",
+                store.printStorePath(drvPath),
+                info.references.size(),
+                references);
+        }
+
+        if (hashMismatch) {
+            /* Throw an error after registering the path as
+               valid. */
             throw BuildError(
                 BuildResult::Failure::HashMismatch,
                 "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s",
                 store.printStorePath(drvPath),
                 wanted.to_string(HashFormat::SRI, true),
                 got.to_string(HashFormat::SRI, true));
-        }
-        if (!info.references.empty()) {
-            auto numViolations = info.references.size();
-            throw BuildError(
-                BuildResult::Failure::HashMismatch,
-                "fixed-output derivations must not reference store paths: '%s' references %d distinct paths, e.g. '%s'",
-                store.printStorePath(drvPath),
-                numViolations,
-                store.printStorePath(*info.references.begin()));
         }
     }
 }

@@ -37,6 +37,12 @@ if isDaemonNewer "2.20pre20240108"; then
     expectStderr 1 nix-build fixed.nix -A badReferences | grepQuiet "not allowed to refer to other store paths"
 fi
 
+echo 'testing illegal references...'
+expectStderr 102 nix-build fixed.nix -A illegalReferences > illegalReferences.err
+grepQuiet "illegal-reference.drv" illegalReferences.err
+grepQuiet "must not reference store paths" illegalReferences.err
+grepQuiet -E "$TEST_ROOT/store/[a-z0-9]*-fixed" illegalReferences.err
+
 # While we're at it, check attribute selection a bit more.
 echo 'testing attribute selection...'
 test "$(nix-instantiate fixed.nix -A good.1 | wc -l)" = 1
