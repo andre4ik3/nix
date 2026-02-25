@@ -12,6 +12,7 @@ namespace nix {
 void checkCAFixedOutput(
     StoreDirConfig & store,
     const StorePath & drvPath,
+    const StringPairs & drvEnv,
     const DerivationOutput & outputSpec,
     const ValidPathInfo & info,
     Activity & act)
@@ -49,10 +50,12 @@ void checkCAFixedOutput(
         if (hashMismatch) {
             /* Throw an error after registering the path as
                valid. */
+            auto guessedUrl = getOr(drvEnv, "urls", getOr(drvEnv, "url", "(unknown)"));
             throw BuildError(
                 BuildResult::Failure::HashMismatch,
-                "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s",
+                "hash mismatch in fixed-output derivation '%s':\n likely URL: %s\n  specified: %s\n     got:    %s",
                 store.printStorePath(drvPath),
+                guessedUrl,
                 wanted.to_string(HashFormat::SRI, true),
                 got.to_string(HashFormat::SRI, true));
         }
@@ -62,6 +65,7 @@ void checkCAFixedOutput(
 void checkOutputs(
     Store & store,
     const StorePath & drvPath,
+    const StringPairs & drvEnv,
     const decltype(Derivation::outputs) & drvOutputs,
     const decltype(DerivationOptions<StorePath>::outputChecks) & outputChecks,
     const std::map<std::string, ValidPathInfo> & outputs,
@@ -80,7 +84,7 @@ void checkOutputs(
         auto * outputSpec = get(drvOutputs, outputName);
         assert(outputSpec);
 
-        checkCAFixedOutput(store, drvPath, *outputSpec, info, act);
+        checkCAFixedOutput(store, drvPath, drvEnv, *outputSpec, info, act);
 
         struct Closure
         {
