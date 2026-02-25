@@ -458,7 +458,7 @@ ProcessLineResult NixRepl::processLine(std::string line)
                   << "  :t <expr>                    Describe result of evaluation\n"
                   << "  :u <expr>                    Build derivation, then start nix-shell\n"
                   << "  :doc <expr>                  Show documentation of a builtin function\n"
-                  << "  :log <expr>                  Show logs for a derivation\n"
+                  << "  :log <expr | .drv path>      Show logs for a derivation\n"
                   << "  :te, :trace-enable [bool]    Enable, disable or toggle showing traces for\n"
                   << "                               errors\n"
                   << "  :?, :help                    Brings up this help menu\n";
@@ -605,7 +605,50 @@ ProcessLineResult NixRepl::processLine(std::string line)
         runNix("nix-shell", toOsStrings({state->store->printStorePath(drvPath)}));
     }
 
-    else if (command == ":b" || command == ":bl" || command == ":i" || command == ":sh" || command == ":log") {
+    else if (command == ":log") {
+        StorePath drvPath = ([&]() {
+            auto maybeDrvPath = state->store->maybeParseStorePath(arg);
+            if (maybeDrvPath && maybeDrvPath->isDerivation())
+                return std::move(*maybeDrvPath);
+
+            Value v;
+            evalString(arg, v);
+            return getDerivationPath(v);
+        })();
+        // N.B. This need not be a local / native file path. For
+        // example, we might be using an SSH store to a different OS.
+        std::string drvPathRaw = state->store->printStorePath(drvPath);
+
+        settings.readOnlyMode = true;
+        Finally roModeReset([&]() { settings.readOnlyMode = false; });
+        auto subs = getDefaultSubstituters();
+
+        subs.push_front(state->store);
+
+        bool foundLog = false;
+        RunPager pager;
+        for (auto & sub : subs) {
+            auto * logSubP = dynamic_cast<LogStore *>(&*sub);
+            if (!logSubP) {
+                printInfo(
+                    "Skipped '%s' which does not support retrieving build logs", sub->config.getHumanReadableURI());
+                continue;
+            }
+            auto & logSub = *logSubP;
+
+            auto log = logSub.getBuildLog(drvPath);
+            if (log) {
+                printInfo("got build log for '%s' from '%s'", drvPathRaw, logSub.config.getHumanReadableURI());
+                logger->writeToStdout(*log);
+                foundLog = true;
+                break;
+            }
+        }
+        if (!foundLog)
+            throw Error("build log of '%s' is not available", drvPathRaw);
+    }
+
+    else if (command == ":b" || command == ":bl" || command == ":i" || command == ":sh") {
         Value v;
         evalString(arg, v);
         StorePath drvPath = getDerivationPath(v);
@@ -634,12 +677,6 @@ ProcessLineResult NixRepl::processLine(std::string line)
             }
         } else if (command == ":i") {
             runNix("nix-env", toOsStrings({"-i", drvPathRaw}));
-        } else if (command == ":log") {
-            settings.readOnlyMode = true;
-            Finally roModeReset([&]() { settings.readOnlyMode = false; });
-            RunPager pager;
-            auto log = fetchBuildLog(state->store, drvPath, drvPathRaw);
-            logger->writeToStdout(log);
         } else {
             runNix("nix-shell", toOsStrings({drvPathRaw}));
         }

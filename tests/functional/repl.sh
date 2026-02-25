@@ -229,6 +229,11 @@ import $testDir/lang/parse-fail-eof-pos.nix
 EDITOR='cat' nix repl <<< ':e derivation' 2>&1 | grepQuiet 'derivationStrict'
 EDITOR='cat' nix repl <<< ':e <nix/fetchurl.nix>' 2>&1 | grepQuiet 'builtin:fetchurl'
 
+# Test :log with derivation paths.
+simple_path="$(nix-instantiate "$testDir/simple.nix")"
+# `PATH=` is a part of build log.
+testReplResponseNoRegex ":log ${simple_path}" "PATH="
+
 # TODO: move init to characterisation/framework.sh
 badDiff=0
 badExitCode=0
