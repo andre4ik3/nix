@@ -358,22 +358,20 @@ std::string version()
 void printVersion(const std::string & programName)
 {
     std::cout << fmt("%s %s", programName, version()) << std::endl;
-    if (verbosity > lvlInfo) {
-        Strings cfg;
+    Strings cfg;
 #if NIX_USE_BOEHMGC
-        cfg.push_back("gc");
+    cfg.push_back("gc");
 #endif
-        cfg.push_back("signed-caches");
-        std::cout << "System type: " << settings.thisSystem << "\n";
-        std::cout << "Additional system types: " << concatStringsSep(", ", settings.extraPlatforms.get()) << "\n";
-        std::cout << "Features: " << concatStringsSep(", ", cfg) << "\n";
-        std::cout << "System configuration file: " << os_string_to_string(nixConfFile().native()) << "\n";
-        std::cout << "User configuration files: "
-                  << os_string_to_string(ExecutablePath{.directories = nixUserConfFiles()}.render()) << "\n";
-        std::cout << "Store directory: " << resolveStoreConfig(StoreReference{settings.storeUri.get()})->storeDir
-                  << "\n";
-        std::cout << "State directory: " << os_string_to_string(settings.nixStateDir.native()) << "\n";
-    }
+    cfg.push_back("signed-caches");
+    std::cout << "System type: " << settings.thisSystem << "\n";
+    std::cout << "Additional system types: " << concatStringsSep(", ", settings.extraPlatforms.get()) << "\n";
+    std::cout << "Features: " << concatStringsSep(", ", cfg) << "\n";
+    std::cout << "System configuration file: " << os_string_to_string(nixConfFile().native()) << "\n";
+    std::cout << "User configuration files: "
+              << os_string_to_string(ExecutablePath{.directories = nixUserConfFiles()}.render()) << "\n";
+    std::cout << "Store directory: " << resolveStoreConfig(StoreReference{settings.storeUri.get()})->storeDir << "\n";
+    std::cout << "State directory: " << os_string_to_string(settings.nixStateDir.native()) << "\n";
+    std::cout << "Data directory: " << os_string_to_string(getDataDir().native()) << "\n";
     throw Exit();
 }
 
