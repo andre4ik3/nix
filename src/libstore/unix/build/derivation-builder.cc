@@ -24,6 +24,8 @@
 #include "nix/store/provenance.hh"
 
 #include <nlohmann/json.hpp>
+#include <queue>
+#include <cctype>
 
 #include <sys/un.h>
 #include <fcntl.h>
@@ -126,6 +128,13 @@ void preserveDeathSignal(fun<void()> setCredentials)
 #endif
 }
 
+static std::string filterPrintable(const std::string & s)
+{
+    std::string res;
+    for (char c : s)
+        res += std::isprint(static_cast<unsigned char>(c)) ? c : '.';
+    return res;
+}
 static void handleDiffHook(
     const std::filesystem::path & diffHook,
     uid_t uid,
@@ -1280,10 +1289,126 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
             *orifu);
     });
 
+    auto describeCycleEdge = [&](const std::string & from, const std::string & to) -> std::string {
+        auto fromPath = get(scratchOutputs, from);
+        auto toPath = get(scratchOutputs, to);
+        if (!fromPath || !toPath)
+            return "(unable to resolve edge in output graph)";
+
+        Path fromHostPath = realPathInHost(store.printStorePath(*fromPath));
+        PosixSourceAccessor accessor{std::filesystem::path(fromHostPath)};
+
+        std::optional<std::string> firstHit;
+        scanForReferencesDeep(accessor, CanonPath::root, {*toPath}, [&](FileRefScanResult result) {
+            if (firstHit)
+                return;
+
+            auto p = result.filePath.isRoot() ? result.filePath.abs() : result.filePath.rel();
+            auto st = accessor.lstat(result.filePath);
+
+            if (st.type == SourceAccessor::Type::tRegular) {
+                auto contents = static_cast<SourceAccessor &>(accessor).readFile(result.filePath);
+                std::string hash(toPath->hashPart());
+                if (auto pos = contents.find(hash); pos != std::string::npos) {
+                    size_t margin = 32;
+                    auto pos2 = pos >= margin ? pos - margin : 0;
+                    auto hit = filterPrintable(std::string(contents, pos2, pos - pos2 + hash.size() + margin));
+                    firstHit = fmt("%s: …%s…", p, hit);
+                }
+            } else if (st.type == SourceAccessor::Type::tSymlink) {
+                auto target = accessor.readLink(result.filePath);
+                std::string hash(toPath->hashPart());
+                if (target.find(hash) != std::string::npos)
+                    firstHit = fmt("%s -> %s", p, target);
+            }
+        });
+
+        return firstHit.value_or("(reference found, but file context was not available)");
+    };
+
+    auto cycleGraphString = [&](const std::string & cyclePath, const std::string & cycleParent) -> std::string {
+        std::map<std::string, StringSet> outputGraph;
+        for (auto & [name, refs] : outputReferencesIfUnregistered) {
+            outputGraph.insert_or_assign(
+                name,
+                std::visit(
+                    overloaded{
+                        [&](const AlreadyRegistered &) -> StringSet { return {}; },
+                        [&](const PerhapsNeedToRegister & r) -> StringSet { return r.otherOutputs; },
+                    },
+                    refs));
+        }
+
+        std::queue<std::string> todo;
+        std::set<std::string> visited;
+        std::map<std::string, std::string> prev;
+        todo.push(cyclePath);
+        visited.insert(cyclePath);
+
+        while (!todo.empty()) {
+            auto cur = todo.front();
+            todo.pop();
+            if (cur == cycleParent)
+                break;
+            for (auto & next : outputGraph[cur]) {
+                if (!visited.insert(next).second)
+                    continue;
+                prev[next] = cur;
+                todo.push(next);
+            }
+        }
+
+        std::vector<std::string> chain;
+        if (cyclePath == cycleParent)
+            chain.push_back(cyclePath);
+        else if (visited.count(cycleParent)) {
+            for (std::string cur = cycleParent;; cur = prev.at(cur)) {
+                chain.push_back(cur);
+                if (cur == cyclePath)
+                    break;
+            }
+            std::reverse(chain.begin(), chain.end());
+        } else {
+            // Fallback to the direct cycle edge if no path was reconstructed.
+            chain = {cyclePath, cycleParent};
+        }
+
+        // close the cycle (cycleParent -> cyclePath)
+        chain.push_back(cyclePath);
+
+        auto cycleStartPath = get(scratchOutputs, cyclePath);
+        if (!cycleStartPath)
+            return "";
+
+        std::string graph = store.printStorePath(*cycleStartPath) + "\n";
+        std::string pad;
+        for (size_t i = 0; i + 1 < chain.size(); ++i) {
+            auto toPath = get(scratchOutputs, chain[i + 1]);
+            if (!toPath)
+                break;
+            graph += pad + treeLast + describeCycleEdge(chain[i], chain[i + 1]) + "\n";
+            graph += pad + treeNull + "→ " + store.printStorePath(*toPath) + "\n";
+            pad += treeNull;
+        }
+
+        return graph;
+    };
+
     auto sortedOutputNames = std::visit(
         overloaded{
             [&](Cycle<std::string> & cycle) -> std::vector<std::string> {
-                // TODO with more -vvvv also show the temporary paths for manual inspection.
+                auto graph = cycleGraphString(cycle.path, cycle.parent);
+                if (!graph.empty()) {
+                    throw BuildError(
+                        BuildResult::Failure::OutputRejected,
+                        "cycle detected in build of '%s' in the references of output '%s' from output "
+                        "'%s'.\n\n"
+                        "Shown below are the files inside the outputs leading to the cycle:\n%s",
+                        store.printStorePath(drvPath),
+                        cycle.path,
+                        cycle.parent,
+                        graph);
+                }
                 throw BuildError(
                     BuildResult::Failure::OutputRejected,
                     "cycle detected in build of '%s' in the references of output '%s' from output '%s'",
