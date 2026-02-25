@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <queue>
 
 #include "nix/store/store-api.hh"
 #include "nix/store/build-result.hh"
+#include "nix/util/util.hh"
 
 #include "derivation-check.hh"
 
@@ -72,35 +74,50 @@ void checkOutputs(
 
         checkCAFixedOutput(store, drvPath, *outputSpec, info, act);
 
+        struct Closure
+        {
+            /* Keys: paths in the closure, values: direct references of that path. */
+            std::map<StorePath, StorePathSet> paths;
+            uint64_t size;
+        };
+
         /* Compute the closure and closure size of some output. This
            is slightly tricky because some of its references (namely
            other outputs) may not be valid yet. */
         auto getClosure = [&](const StorePath & path) {
             uint64_t closureSize = 0;
-            StorePathSet pathsDone;
+            std::map<StorePath, StorePathSet> pathsDone;
             std::queue<StorePath> pathsLeft;
             pathsLeft.push(path);
 
             while (!pathsLeft.empty()) {
                 auto path = pathsLeft.front();
                 pathsLeft.pop();
-                if (!pathsDone.insert(path).second)
+                if (pathsDone.contains(path))
                     continue;
 
                 auto i = outputsByPath.find(path);
+                auto & refs = pathsDone[path];
                 if (i != outputsByPath.end()) {
                     closureSize += i->second.narSize;
-                    for (auto & ref : i->second.references)
+                    for (auto & ref : i->second.references) {
                         pathsLeft.push(ref);
+                        refs.insert(ref);
+                    }
                 } else {
                     auto info = store.queryPathInfo(path);
                     closureSize += info->narSize;
-                    for (auto & ref : info->references)
+                    for (auto & ref : info->references) {
                         pathsLeft.push(ref);
+                        refs.insert(ref);
+                    }
                 }
             }
 
-            return std::make_pair(std::move(pathsDone), closureSize);
+            return Closure{
+                .paths = std::move(pathsDone),
+                .size = closureSize,
+            };
         };
 
         auto applyChecks = [&](const DerivationOptions<StorePath>::OutputChecks & checks) {
@@ -113,7 +130,7 @@ void checkOutputs(
                     *checks.maxSize);
 
             if (checks.maxClosureSize) {
-                uint64_t closureSize = getClosure(info.path).second;
+                uint64_t closureSize = getClosure(info.path).size;
                 if (closureSize > *checks.maxClosureSize)
                     throw BuildError(
                         BuildResult::Failure::OutputRejected,
@@ -152,33 +169,103 @@ void checkOutputs(
                         i);
                 }
 
-                auto used = recursive ? getClosure(info.path).first : info.references;
+                std::map<StorePath, StorePathSet> used;
+                if (recursive) {
+                    used = getClosure(info.path).paths;
+                } else {
+                    for (auto & ref : info.references)
+                        used.insert({ref, {}});
+                }
 
-                if (recursive && checks.ignoreSelfRefs)
-                    used.erase(info.path);
+                std::set<StorePath> badPaths;
 
-                StorePathSet badPaths;
-
-                for (auto & i : used)
+                for (auto & [path, refs] : used) {
+                    (void) refs;
+                    if (path == info.path && recursive && checks.ignoreSelfRefs)
+                        continue;
                     if (allowed) {
-                        if (!spec.count(i))
-                            badPaths.insert(i);
+                        if (!spec.count(path))
+                            badPaths.insert(path);
                     } else {
-                        if (spec.count(i))
-                            badPaths.insert(i);
+                        if (spec.count(path))
+                            badPaths.insert(path);
                     }
+                }
 
                 if (!badPaths.empty()) {
-                    std::string badPathsStr;
+                    std::string badPathsList;
                     for (auto & i : badPaths) {
-                        badPathsStr += "\n  ";
-                        badPathsStr += store.printStorePath(i);
+                        if (!badPathsList.empty())
+                            badPathsList += "\n";
+                        badPathsList += store.printStorePath(i);
                     }
-                    throw BuildError(
-                        BuildResult::Failure::OutputRejected,
-                        "output '%s' is not allowed to refer to the following paths:%s",
-                        store.printStorePath(info.path),
-                        badPathsStr);
+
+                    if (recursive) {
+                        auto renderChain = [&](const StorePath & target) {
+                            std::queue<StorePath> todo;
+                            std::set<StorePath> visited;
+                            std::map<StorePath, StorePath> prev;
+
+                            todo.push(info.path);
+                            visited.insert(info.path);
+                            bool found = info.path == target;
+
+                            while (!todo.empty() && !found) {
+                                auto cur = todo.front();
+                                todo.pop();
+                                auto it = used.find(cur);
+                                if (it == used.end())
+                                    continue;
+                                for (auto & next : it->second) {
+                                    if (!visited.insert(next).second)
+                                        continue;
+                                    prev.insert_or_assign(next, cur);
+                                    if (next == target) {
+                                        found = true;
+                                        break;
+                                    }
+                                    todo.push(next);
+                                }
+                            }
+
+                            std::vector<StorePath> chain;
+                            if (found) {
+                                for (auto cur = target;; cur = prev.at(cur)) {
+                                    chain.push_back(cur);
+                                    if (cur == info.path)
+                                        break;
+                                }
+                                std::reverse(chain.begin(), chain.end());
+                            } else {
+                                chain = {info.path, target};
+                            }
+
+                            std::string graph = store.printStorePath(info.path) + "\n";
+                            std::string pad;
+                            for (size_t i = 1; i < chain.size(); ++i) {
+                                graph += pad + treeLast + store.printStorePath(chain[i]) + "\n";
+                                pad += treeNull;
+                            }
+                            return graph;
+                        };
+
+                        std::string badPathRefsTree;
+                        for (auto & i : badPaths)
+                            badPathRefsTree += renderChain(i);
+
+                        throw BuildError(
+                            BuildResult::Failure::OutputRejected,
+                            "output '%s' is not allowed to refer to the following paths:\n%s\n\nShown below are chains that lead to the forbidden path(s).\n%s",
+                            store.printStorePath(info.path),
+                            badPathsList,
+                            badPathRefsTree);
+                    } else {
+                        throw BuildError(
+                            BuildResult::Failure::OutputRejected,
+                            "output '%s' is not allowed to have direct references to the following paths:\n%s",
+                            store.printStorePath(info.path),
+                            badPathsList);
+                    }
                 }
             };
 
