@@ -1,0 +1,90 @@
+error:
+       … while calling the 'getAttr' builtin
+         at «nix-internal»/derivation-internal.nix:51:17:
+           50|     value = commonAttrs // {
+           51|       outPath = builtins.getAttr outputName strict;
+             |                 ^
+           52|       drvPath = strict.drvPath;
+
+       … while calling the 'derivationStrict' builtin
+         at «nix-internal»/derivation-internal.nix:38:12:
+           37|
+           38|   strict = drvFunc drvAttrs;
+             |            ^
+           39|
+
+       … while evaluating derivation 'package-you-care-about'
+         whose name attribute is located at /pwd/lang/eval-fail-drv-trace-summary.nix:22:5
+
+       … while evaluating attribute 'buildInputs' of derivation 'package-you-care-about'
+         at /pwd/lang/eval-fail-drv-trace-summary.nix:26:5:
+           25|     __structuredAttrs = true;
+           26|     buildInputs = [
+             |     ^
+           27|       direct-dependency
+
+       … while evaluating list element at index 0
+
+       … while calling the 'getAttr' builtin
+         at «nix-internal»/derivation-internal.nix:51:17:
+           50|     value = commonAttrs // {
+           51|       outPath = builtins.getAttr outputName strict;
+             |                 ^
+           52|       drvPath = strict.drvPath;
+
+       … while calling the 'derivationStrict' builtin
+         at «nix-internal»/derivation-internal.nix:38:12:
+           37|
+           38|   strict = drvFunc drvAttrs;
+             |            ^
+           39|
+
+       … while evaluating derivation 'direct-dependency'
+         whose name attribute is located at /pwd/lang/eval-fail-drv-trace-summary.nix:14:5
+
+       … while evaluating attribute 'libtrans' of derivation 'direct-dependency'
+         at /pwd/lang/eval-fail-drv-trace-summary.nix:18:5:
+           17|     __structuredAttrs = true;
+           18|     libtrans = transitive-dependency;
+             |     ^
+           19|   };
+
+       … while calling the 'getAttr' builtin
+         at «nix-internal»/derivation-internal.nix:51:17:
+           50|     value = commonAttrs // {
+           51|       outPath = builtins.getAttr outputName strict;
+             |                 ^
+           52|       drvPath = strict.drvPath;
+
+       … while calling the 'derivationStrict' builtin
+         at «nix-internal»/derivation-internal.nix:38:12:
+           37|
+           38|   strict = drvFunc drvAttrs;
+             |            ^
+           39|
+
+       … while evaluating derivation 'transitive-dependency'
+         whose name attribute is located at /pwd/lang/eval-fail-drv-trace-summary.nix:3:5
+
+       … while evaluating attribute 'nativeBuildInputs' of derivation 'transitive-dependency'
+         at /pwd/lang/eval-fail-drv-trace-summary.nix:7:5:
+            6|     __structuredAttrs = true;
+            7|     nativeBuildInputs = [
+             |     ^
+            8|       null
+
+       … while evaluating list element at index 1
+
+       … while calling the 'throw' builtin
+         at /pwd/lang/eval-fail-drv-trace-summary.nix:9:8:
+            8|       null
+            9|       (throw "transitive dependency growls")
+             |        ^
+           10|     ];
+
+       error: transitive dependency growls
+
+       note: trace involved the following derivations:
+       derivation 'package-you-care-about'
+       derivation 'direct-dependency'
+       derivation 'transitive-dependency'

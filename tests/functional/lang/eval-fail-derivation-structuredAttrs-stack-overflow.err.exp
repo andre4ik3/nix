@@ -45,3 +45,6 @@ error:
            12|       reverseLinkedList = builtins.foldl' (tail: head: { inherit head tail; }) null long;
              |                                                                  ^
            13|     in
+
+       note: trace involved the following derivations:
+       derivation 'test'

@@ -11,7 +11,11 @@
 #include <cinttypes>
 #include <iostream>
 #include <optional>
+#include <set>
 #include <sstream>
+#include <vector>
+
+#include "nix/util/serialise.hh"
 
 namespace nix {
 
@@ -65,6 +69,31 @@ std::optional<std::string> ErrorInfo::programName = std::nullopt;
 std::ostream & operator<<(std::ostream & os, const HintFmt & hf)
 {
     return os << hf.str();
+}
+
+Trace Trace::fromDrv(std::shared_ptr<const Pos> pos, std::string drvName)
+{
+    auto hint = pos ? HintFmt(
+                          "while evaluating derivation '%s'\n"
+                          "  whose name attribute is located at %s",
+                          drvName,
+                          *pos)
+                    : HintFmt("while evaluating derivation '%s'", drvName);
+
+    return Trace{
+        .pos = nullptr,
+        .hint = std::move(hint),
+        .drvTrace = DrvTrace(std::move(drvName)),
+    };
+}
+
+Trace Trace::fromDrvAttr(std::shared_ptr<const Pos> pos, std::string drvName, std::string attrOfDrv)
+{
+    return Trace{
+        .pos = std::move(pos),
+        .hint = HintFmt("while evaluating attribute '%1%' of derivation '%2%'", attrOfDrv, drvName),
+        .drvTrace = DrvTrace(std::move(drvName)),
+    };
 }
 
 /**
@@ -227,6 +256,26 @@ void printSkippedTracesMaybe(
     // printed a chunk of `duplicate frames omitted`. Either way, we've
     // processed these traces and can clear them.
     skippedTraces.clear();
+}
+
+static void printDerivationTracesMaybe(std::ostream & output, const std::list<Trace> & traces)
+{
+    std::set<std::string> seen;
+    std::vector<std::string> drvNames;
+
+    for (const auto & trace : traces) {
+        if (!trace.drvTrace)
+            continue;
+        if (seen.insert(trace.drvTrace->drvName).second)
+            drvNames.push_back(trace.drvTrace->drvName);
+    }
+
+    if (drvNames.empty())
+        return;
+
+    output << "\n" << ANSI_BLUE "note:" ANSI_NORMAL << " trace involved the following derivations:\n";
+    for (const auto & drvName : drvNames)
+        output << HintFmt("derivation '%s'", drvName) << "\n";
 }
 
 std::ostream & showErrorInfo(std::ostream & out, const ErrorInfo & einfo, bool showTrace)
@@ -427,6 +476,7 @@ std::ostream & showErrorInfo(std::ostream & out, const ErrorInfo & einfo, bool s
     oss << einfo.msg << "\n";
 
     printPosMaybe(oss, "", einfo.pos);
+    printDerivationTracesMaybe(oss, einfo.traces);
 
     auto suggestions = einfo.suggestions.trim();
     if (!suggestions.suggestions.empty()) {

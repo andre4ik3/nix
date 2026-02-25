@@ -17,3 +17,6 @@ error:
          whose name attribute is located at /pwd/lang/eval-fail-derivation-name.nix:<number>:<number>
 
        error: invalid derivation name: name '~jiggle~' contains illegal character '~'. Please pass a different 'name'.
+
+       note: trace involved the following derivations:
+       derivation '~jiggle~'
