@@ -85,6 +85,10 @@ MakeError(IFDError, EvalBaseError);
  */
 MakeError(RecoverableEvalError, EvalBaseError);
 
+/**
+ * Represents an exception due to an invalid path; that is, it does not exist.
+ * It corresponds to `!Store::isValidPath()`.
+ */
 class InvalidPathError : public CloneableError<InvalidPathError, EvalError>
 {
     void anchor() override;
