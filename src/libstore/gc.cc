@@ -19,6 +19,7 @@
 #include <boost/unordered/unordered_flat_set.hpp>
 #include <boost/regex.hpp>
 #include <queue>
+#include <sstream>
 #include <thread>
 #include <errno.h>
 #include <fcntl.h>
@@ -242,7 +243,6 @@ void LocalStore::findRoots(const std::filesystem::path & path, std::filesystem::
     };
 
     try {
-
         if (type == std::filesystem::file_type::unknown)
             type = std::filesystem::symlink_status(path).type();
 
@@ -662,25 +662,16 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
 
             if (auto pathsToDelete = std::get_if<GCOptions::SpecificPaths>(&options.pathsToDelete)) {
                 if (!pathsToDelete->deleteReferrers && !pathsToDelete->paths.contains(*path)) {
-                    if (options.action != GCOptions::gcDeleteDead)
-                        throw Error(
-                            "Cannot delete path '%s' because it's referenced by path '%s'.",
-                            printStorePath(start),
-                            printStorePath(*path));
                     debug(
                         "cannot delete '%s' because '%s' is not in the specified paths to delete",
                         printStorePath(start),
                         printStorePath(*path));
+                    alive.insert(start);
                     return;
                 }
             }
             /* If this is a root, bail out. */
             if (auto i = roots.find(*path); i != roots.end()) {
-                if (options.action == GCOptions::gcDeleteSpecific)
-                    throw Error(
-                        "Cannot delete path '%s' because it's referenced by the GC root '%s'.",
-                        printStorePath(start),
-                        *i->second.begin());
                 debug("cannot delete '%s' because it's a root", printStorePath(*path));
                 alive.insert(start);
                 return markAlive(*path);
@@ -691,9 +682,6 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
                 auto hashPart = path->hashPart();
                 auto shared(_shared.lock());
                 if (auto i = shared->tempRoots.find(std::string(hashPart)); i != shared->tempRoots.end()) {
-                    if (options.action == GCOptions::gcDeleteSpecific)
-                        throw Error(
-                            "Cannot delete path '%s' because it's in use by '%s'.", printStorePath(start), i->second);
                     alive.insert(start);
                     return markAlive(*path);
                 }
@@ -780,6 +768,8 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
         }
     };
 
+    PathSet kept;
+
     try {
         /* Either delete all garbage paths, or just the specified paths. */
         std::visit(
@@ -799,7 +789,8 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
 
                     for (auto & i : pathsToDelete.paths) {
                         maybeDeleteReferrersClosure(i);
-                        assert(options.action == GCOptions::gcDeleteDead || dead.count(i));
+                        if (options.action == GCOptions::gcDeleteSpecific && isValidPath(i))
+                            kept.insert(printStorePath(i));
                     }
                 },
                 [&](const GCOptions::WholeStore & _) {
@@ -905,6 +896,27 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
             ;
 
         printInfo("note: hard linking is currently saving %s", renderSize(unsharedSize - actualSize - overhead));
+    }
+
+    if (options.action == GCOptions::gcDeleteSpecific && !kept.empty()) {
+        std::ostringstream pathSummary;
+        size_t n = 0;
+        constexpr size_t summaryThreshold = 10;
+        for (const auto & path : kept) {
+            if (n >= summaryThreshold) {
+                pathSummary << "\nand " << kept.size() - summaryThreshold << " others.";
+                break;
+            }
+            pathSummary << "\n  " << path;
+            ++n;
+        }
+
+        throw Error(
+            "Cannot delete some of the given paths because they are still alive. "
+            "Paths not deleted:"
+            "%1%"
+            "\nTo find out why, use nix-store --query --roots and nix-store --query --referrers.",
+            pathSummary.str());
     }
 
     /* While we're at it, vacuum the database. */
