@@ -15,6 +15,7 @@ namespace nix {
 void checkCAFixedOutput(
     StoreDirConfig & store,
     const StorePath & drvPath,
+    const StringPairs & drvEnv,
     const DerivationOutput & outputSpec,
     const ValidPathInfo & info,
     Activity & act);
@@ -32,6 +33,7 @@ void checkCAFixedOutput(
 void checkOutputs(
     Store & store,
     const StorePath & drvPath,
+    const StringPairs & drvEnv,
     const decltype(Derivation::outputs) & drvOutputs,
     const decltype(DerivationOptions<StorePath>::outputChecks) & drvOptions,
     const std::map<std::string, ValidPathInfo> & outputs,

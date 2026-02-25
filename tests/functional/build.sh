@@ -164,6 +164,8 @@ test "$(<<<"$out" grep -cE '^error:')" = 1
 <<<"$out" grepQuiet -E "hash mismatch in fixed-output derivation '.*-x1\\.drv'"
 <<<"$out" grepQuiet -vE "hash mismatch in fixed-output derivation '.*-x3\\.drv'"
 <<<"$out" grepQuiet -vE "hash mismatch in fixed-output derivation '.*-x2\\.drv'"
+<<<"$out" grepQuiet -E "likely URL: https://meow.puppy.forge/puppy.tar.gz"
+<<<"$out" grepQuiet -vE "likely URL: https://kitty.forge/cat.tar.gz"
 
 out="$(nix build -f fod-failing.nix -L x1 x2 x3 --keep-going 2>&1)" && status=0 || status=$?
 test "$status" = 1
@@ -172,6 +174,9 @@ test "$(<<<"$out" grep -cE '^error:')" = 3
 <<<"$out" grepQuiet -E "hash mismatch in fixed-output derivation '.*-x1\\.drv'"
 <<<"$out" grepQuiet -E "hash mismatch in fixed-output derivation '.*-x3\\.drv'"
 <<<"$out" grepQuiet -E "hash mismatch in fixed-output derivation '.*-x2\\.drv'"
+<<<"$out" grepQuiet -E "likely URL: https://meow.puppy.forge/puppy.tar.gz"
+<<<"$out" grepQuiet -E "likely URL: https://kitty.forge/cat.tar.gz"
+<<<"$out" grepQuiet -E "likely URL: \\(unknown\\)"
 
 out="$(nix build -f fod-failing.nix -L x4 2>&1)" && status=0 || status=$?
 test "$status" = 1
