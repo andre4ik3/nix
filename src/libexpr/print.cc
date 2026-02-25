@@ -323,25 +323,26 @@ private:
             return true;
         }
 
-        // It is ok to force the item(s) here, because they will be printed anyway.
-        state.forceValue(*item, item->determinePos(noPos));
+        if (options.force) {
+            // The item is going to be forced during printing anyway, but we
+            // need its type now to determine pretty-print layout.
+            state.forceValue(*item, item->determinePos(noPos));
+        }
 
         // Pretty-print single-item attrsets only if they contain nested
         // structures.
         auto itemType = item->type();
-        return itemType == nList || itemType == nAttrs || itemType == nThunk;
+        return itemType == nList || itemType == nAttrs;
     }
 
     void printAttrs(Value & v, size_t depth)
     {
-        if (seen && !seen->insert(v.attrs()).second) {
-            printRepeated();
-            return;
-        }
-
         if (options.force && options.derivationPaths && state.isDerivation(v)) {
             printDerivation(v);
-        } else if (depth < options.maxDepth) {
+        } else if (seen && !v.attrs()->empty() && !seen->insert(v.attrs()).second) {
+            printRepeated();
+            return;
+        } else if (depth < options.maxDepth || v.attrs()->empty()) {
             increaseIndent();
             output << "{";
 
@@ -401,13 +402,16 @@ private:
             return true;
         }
 
-        // It is ok to force the item(s) here, because they will be printed anyway.
-        state.forceValue(*item, item->determinePos(noPos));
+        if (options.force) {
+            // The item is going to be forced during printing anyway, but we
+            // need its type now to determine pretty-print layout.
+            state.forceValue(*item, item->determinePos(noPos));
+        }
 
         // Pretty-print single-item lists only if they contain nested
         // structures.
         auto itemType = item->type();
-        return itemType == nList || itemType == nAttrs || itemType == nThunk;
+        return itemType == nList || itemType == nAttrs;
     }
 
     void printList(Value & v, size_t depth)
@@ -417,7 +421,7 @@ private:
             return;
         }
 
-        if (depth < options.maxDepth) {
+        if (depth < options.maxDepth || v.listSize() == 0) {
             increaseIndent();
             output << "[";
             auto listItems = v.listView();

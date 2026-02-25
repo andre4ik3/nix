@@ -7,3 +7,5 @@ oneDeepList
 oneDeepList
 twoDeepList
 twoDeepList
+:p let x = 1 + 2; in [ { inherit x; } { inherit x; } ]
+:p let x = 1 + 2; in [ [ x ] [ x ] ]

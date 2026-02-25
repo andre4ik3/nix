@@ -36,3 +36,15 @@ nix-repl> twoDeepList
 [
   [ ... ]
 ]
+
+nix-repl> :p let x = 1 + 2; in [ { inherit x; } { inherit x; } ]
+[
+  { x = 3; }
+  { x = 3; }
+]
+
+nix-repl> :p let x = 1 + 2; in [ [ x ] [ x ] ]
+[
+  [ 3 ]
+  [ 3 ]
+]
