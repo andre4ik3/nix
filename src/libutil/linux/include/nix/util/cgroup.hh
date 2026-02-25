@@ -42,6 +42,15 @@ CanonPath getCurrentCgroup();
 CanonPath getRootCgroup();
 
 /**
+ * Override the cgroup returned by `getRootCgroup()`. Must be called
+ * before the first call to `getRootCgroup()`. Used when the service
+ * manager has already placed us in a sub-cgroup of the delegated
+ * service cgroup (`DelegateSubgroup=`), in which case new sub-cgroups
+ * must be created next to ours rather than inside it.
+ */
+void setRootCgroup(const CanonPath & cgroup);
+
+/**
  * Get the PIDs of all processes in the given cgroup.
  */
 std::set<pid_t> getPidsInCgroup(const std::filesystem::path & cgroup);
