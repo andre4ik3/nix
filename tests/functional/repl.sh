@@ -78,7 +78,7 @@ testRepl --store "$TEST_ROOT/other-root?real=$NIX_STORE_DIR"
 
 # Remove ANSI escape sequences. They can prevent grep from finding a match.
 stripColors () {
-    sed -E 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g'
+    sed -E $'s/\x1B\\[[0-9;]*[mK]//g; s/\x1B\\]8;[^\a\x1B]*(\x1B\\\\|\a)//g'
 }
 
 testReplResponseGeneral () {
