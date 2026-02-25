@@ -14,6 +14,21 @@ struct EvalSettings;
 
 namespace nix::flake {
 
+enum class AcceptFlakeConfig { False, Ask, True };
+
+} // namespace nix::flake
+
+namespace nix {
+
+template<>
+flake::AcceptFlakeConfig BaseSetting<flake::AcceptFlakeConfig>::parse(const std::string & str) const;
+template<>
+std::string BaseSetting<flake::AcceptFlakeConfig>::to_string() const;
+
+} // namespace nix
+
+namespace nix::flake {
+
 struct Settings : public Config
 {
     Settings();
@@ -23,11 +38,21 @@ struct Settings : public Config
     Setting<bool> useRegistries{
         this, true, "use-registries", "Whether to use flake registries to resolve flake references.", {}, true};
 
-    Setting<bool> acceptFlakeConfig{
+    Setting<AcceptFlakeConfig> acceptFlakeConfig{
         this,
-        false,
+        AcceptFlakeConfig::Ask,
         "accept-flake-config",
-        "Whether to accept Nix configuration settings from a flake without prompting.",
+        R"(
+          Whether to accept Nix configuration from the `nixConfig` attribute of
+          a flake.
+
+          If set to `true`, such configuration will be accepted without asking;
+          this is almost always a very bad idea. Setting this to `ask` will
+          prompt the user each time whether to allow a certain configuration
+          option set this way, and offer to optionally remember their choice.
+          When set to `false`, the configuration will be automatically
+          declined.
+        )",
         {},
         true};
 

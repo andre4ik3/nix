@@ -37,9 +37,13 @@ if type -p script >/dev/null && script -q -c true /dev/null; then
 else
     echo "script is not available or not GNU-like, so we skip testing with an added tty"
 fi
-# shellcheck disable=SC2235
-(! [[ -f post-hook-ran ]])
+[[ ! -f post-hook-ran ]]
 TODO_NixOS
+clearStore
+
+# Likewise with --no-accept-flake-config.
+nix build --no-accept-flake-config
+[[ ! -f post-hook-ran ]]
 clearStore
 
 nix build --accept-flake-config
