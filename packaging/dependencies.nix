@@ -226,26 +226,6 @@ scope: {
     }
   );
 
-  # TODO Hack until https://github.com/NixOS/nixpkgs/issues/45462 is fixed.
-  boost =
-    (pkgs.boost.override {
-      extraB2Args = [
-        "--with-container"
-        "--with-context"
-        "--with-coroutine"
-        "--with-iostreams"
-        "--with-url"
-        "--with-thread"
-      ];
-      enableIcu = false;
-      inherit stdenv;
-    }).overrideAttrs
-      (old: {
-        # Need to remove `--with-*` to use `--with-libraries=...`
-        buildPhase = lib.replaceStrings [ "--without-python" ] [ "" ] old.buildPhase;
-        installPhase = lib.replaceStrings [ "--without-python" ] [ "" ] old.installPhase;
-      });
-
   # Build opentelemetry-cpp against the standard library, so that its
   # API uses `std::string_view`, `std::shared_ptr` etc. instead of its
   # own `nostd::` back-ports. This is an ABI switch, so it has to be
