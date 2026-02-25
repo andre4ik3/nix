@@ -49,10 +49,7 @@ LegacySSHStore::LegacySSHStore(ref<const Config> config)
               std::max(1, (int) config->maxConnections),
               [this]() { return openConnection(); },
               [](const ref<Connection> & r) { return r->good; }))
-    , master(config->createSSHMaster(
-          // Use SSH master only if using more than 1 connection.
-          connections->capacity() > 1,
-          config->logFD))
+    , master(config->createSSHMaster(config->logFD))
 {
 }
 
