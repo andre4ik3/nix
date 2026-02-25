@@ -23,28 +23,12 @@ private:
      * Raw bytes, not Base64 encoding.
      */
     const std::string sshPublicHostKey;
-    const bool useMaster;
     const bool compress;
     const Descriptor logFD;
 
     const ref<const AutoDelete> tmpDir;
 
-    struct State
-    {
-#ifndef _WIN32 // TODO re-enable on Windows, once we can start processes.
-        Pid sshMaster;
-#endif
-        std::filesystem::path socketPath;
-    };
-
-    Sync<State> state_;
-
-    void addCommonSSHOpts(OsStrings & args, std::optional<std::filesystem::path> socketPath);
-    bool isMasterRunning(std::filesystem::path socketPath);
-
-#ifndef _WIN32 // TODO re-enable on Windows, once we can start processes.
-    std::optional<std::filesystem::path> startMaster();
-#endif
+    void addCommonSSHOpts(OsStrings & args);
 
 public:
 
@@ -52,7 +36,6 @@ public:
         const ParsedURL::Authority & authority,
         std::optional<std::filesystem::path> keyFile,
         std::string_view sshPublicHostKey,
-        bool useMaster,
         bool compress,
         Descriptor logFD = INVALID_DESCRIPTOR);
 

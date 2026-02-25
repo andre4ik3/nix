@@ -50,7 +50,7 @@ public:
      *
      * See that constructor for details on the remaining two arguments.
      */
-    SSHMaster createSSHMaster(bool useMaster, Descriptor logFD = INVALID_DESCRIPTOR) const;
+    SSHMaster createSSHMaster(Descriptor logFD = INVALID_DESCRIPTOR) const;
 };
 
 } // namespace nix

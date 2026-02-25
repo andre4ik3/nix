@@ -3,7 +3,6 @@
 #include "nix/util/environment-variables.hh"
 #include "nix/util/os-string.hh"
 #include "nix/util/util.hh"
-#include "nix/util/exec.hh"
 #include "nix/util/base-n.hh"
 
 namespace nix {
@@ -70,7 +69,6 @@ SSHMaster::SSHMaster(
     const ParsedURL::Authority & authority,
     std::optional<std::filesystem::path> keyFile,
     std::string_view sshPublicHostKey,
-    bool useMaster,
     bool compress,
     Descriptor logFD)
     : authority(authority)
@@ -84,7 +82,6 @@ SSHMaster::SSHMaster(
     , fakeSSH(authority.to_string() == "localhost")
     , keyFile(std::move(keyFile))
     , sshPublicHostKey(parsePublicHostKey(authority.host, sshPublicHostKey))
-    , useMaster(useMaster && !fakeSSH)
     , compress(compress)
     , logFD(logFD)
     , tmpDir(make_ref<AutoDelete>(createTempDir("", "nix", 0700)))
@@ -92,7 +89,7 @@ SSHMaster::SSHMaster(
     checkValidAuthority(authority);
 }
 
-void SSHMaster::addCommonSSHOpts(OsStrings & args, std::optional<std::filesystem::path> socketPath)
+void SSHMaster::addCommonSSHOpts(OsStrings & args)
 {
     auto sshArgs = getNixSshOpts();
     args.insert(args.end(), sshArgs.begin(), sshArgs.end());
@@ -109,46 +106,6 @@ void SSHMaster::addCommonSSHOpts(OsStrings & args, std::optional<std::filesystem
 
     if (authority.port)
         args.push_back(string_to_os_string(fmt("-p%d", *authority.port)));
-
-    // We use this to make ssh signal back to us that the connection is established.
-    // It really does run locally; see createSSHEnv which sets up SHELL to make
-    // it launch more reliably. The local command runs synchronously, so presumably
-    // the remote session won't be garbled if the local command is slow.
-    args.push_back(OS_STR("-oPermitLocalCommand=yes"));
-    args.push_back(OS_STR("-oLocalCommand=echo started"));
-    args.insert(args.end(), {OS_STR("-S"), socketPath ? socketPath->native() : OS_STR("none")});
-}
-
-bool SSHMaster::isMasterRunning(std::filesystem::path socketPath)
-{
-    assert(useMaster);
-
-    OsStrings args = {OS_STR("-O"), OS_STR("check"), string_to_os_string(hostnameAndUser)};
-    addCommonSSHOpts(args, socketPath);
-
-    auto res = runProgram(RunOptions{.program = "ssh", .args = std::move(args), .mergeStderrToStdout = true});
-    return res.first == 0;
-}
-
-Strings createSSHEnv()
-{
-    // Copy the environment and set SHELL=/bin/sh
-    StringMap env = getEnv();
-
-    // SSH will invoke the "user" shell for -oLocalCommand, but that means
-    // $SHELL. To keep things simple and avoid potential issues with other
-    // shells, we set it to /bin/sh.
-    // Technically, we don't need that, and we could reinvoke ourselves to print
-    // "started". Self-reinvocation is tricky with library consumers, but mostly
-    // solved; refer to the development history of nixExePath in libstore/globals.cc.
-    env.insert_or_assign("SHELL", "/bin/sh");
-
-    Strings r;
-    for (auto & [k, v] : env) {
-        r.push_back(k + "=" + v);
-    }
-
-    return r;
 }
 
 std::unique_ptr<SSHMaster::Connection> SSHMaster::startCommand(OsStrings && command, OsStrings && extraSshArgs)
@@ -156,8 +113,6 @@ std::unique_ptr<SSHMaster::Connection> SSHMaster::startCommand(OsStrings && comm
 #ifdef _WIN32 // TODO re-enable on Windows, once we can start processes.
     throw UnimplementedError("cannot yet SSH on windows because spawning processes is not yet implemented");
 #else
-    auto socketPath = startMaster();
-
     Pipe in, out;
     in.create();
     out.create();
@@ -167,7 +122,7 @@ std::unique_ptr<SSHMaster::Connection> SSHMaster::startCommand(OsStrings && comm
     options.dieWithParent = false;
 
     std::unique_ptr<Logger::Suspension> loggerSuspension;
-    if (!fakeSSH && !useMaster) {
+    if (!fakeSSH) {
         loggerSuspension = std::make_unique<Logger::Suspension>(logger->suspend());
     }
 
@@ -189,26 +144,15 @@ std::unique_ptr<SSHMaster::Connection> SSHMaster::startCommand(OsStrings && comm
 
             if (!fakeSSH) {
                 args = {"ssh", hostnameAndUser.c_str(), "-x"};
-                addCommonSSHOpts(args, socketPath);
+                addCommonSSHOpts(args);
                 if (verbosity >= lvlChatty)
                     args.push_back("-v");
                 args.splice(args.end(), std::move(extraSshArgs));
-                // Override LocalCommand to no-op on command SSHs; master
-                // already consumed "started". On fallback, "echo started"
-                // would leak into the nix protocol stream. #441
-                if (useMaster) {
-                    for (auto & arg : args) {
-                        if (arg.starts_with(OS_STR("-oLocalCommand="))) {
-                            arg = OS_STR("-oLocalCommand=true");
-                        }
-                    }
-                }
                 args.push_back("--");
             }
 
             args.splice(args.end(), std::move(command));
-            auto env = createSSHEnv();
-            nix::execvpe(args.begin()->c_str(), stringsToCharPtrs(args).data(), stringsToCharPtrs(env).data());
+            execvp(args.begin()->c_str(), stringsToCharPtrs(args).data());
 
             // could not exec ssh/bash
             throw SysError("unable to execute '%s'", args.front());
@@ -218,91 +162,12 @@ std::unique_ptr<SSHMaster::Connection> SSHMaster::startCommand(OsStrings && comm
     in.readSide = INVALID_DESCRIPTOR;
     out.writeSide = INVALID_DESCRIPTOR;
 
-    // Skip readLine when useMaster: SSH connects via master socket, or
-    // falls back to direct connection where LocalCommand is now a no-op.
-    if (!fakeSSH && !useMaster && !(socketPath && isMasterRunning(*socketPath))) {
-        std::string reply;
-        try {
-            reply = readLine(out.readSide.get());
-        } catch (EndOfFile & e) {
-        }
-
-        if (reply != "started") {
-            printTalkative("SSH stdout first line: %s", reply);
-            throw Error("failed to start SSH connection to '%s'", authority.host);
-        }
-    }
-
     conn->out = std::move(out.readSide);
     conn->in = std::move(in.writeSide);
 
     return conn;
 #endif
 }
-
-#ifndef _WIN32 // TODO re-enable on Windows, once we can start processes.
-
-std::optional<std::filesystem::path> SSHMaster::startMaster()
-{
-    if (!useMaster)
-        return std::nullopt;
-
-    auto state(state_.lock());
-
-    // Check if the master is still alive before returning the cached socket.
-    if (state->sshMaster != INVALID_DESCRIPTOR && state->sshMaster.isAlive())
-        return state->socketPath;
-
-    state->socketPath = tmpDir->path() / "ssh.sock";
-
-    Pipe out;
-    out.create();
-
-    ProcessOptions options;
-    options.dieWithParent = false;
-
-    auto suspension = logger->suspend();
-
-    if (isMasterRunning(state->socketPath))
-        return state->socketPath;
-
-    state->sshMaster = startProcess(
-        [&]() {
-            restoreProcessContext();
-
-            close(out.readSide.get());
-
-            if (dup2(out.writeSide.get(), STDOUT_FILENO) == -1)
-                throw SysError("duping over stdout");
-
-            OsStrings args = {"ssh", hostnameAndUser.c_str(), "-M", "-N", "-oControlPersist=no"};
-            if (verbosity >= lvlChatty)
-                args.push_back("-v");
-            addCommonSSHOpts(args, state->socketPath);
-            auto env = createSSHEnv();
-            nix::execvpe(args.begin()->c_str(), stringsToCharPtrs(args).data(), stringsToCharPtrs(env).data());
-
-            throw SysError("unable to execute '%s'", args.front());
-        },
-        options);
-
-    out.writeSide = INVALID_DESCRIPTOR;
-
-    std::string reply;
-    try {
-        reply = readLine(out.readSide.get());
-    } catch (EndOfFile & e) {
-    }
-
-    if (reply != "started") {
-        printTalkative("SSH master stdout first line: %s", reply);
-        throw Error("failed to start SSH master connection to '%s'", authority.host);
-    }
-
-    return state->socketPath;
-}
-
-#endif
 
 void SSHMaster::Connection::trySetBufferSize(size_t size)
 {

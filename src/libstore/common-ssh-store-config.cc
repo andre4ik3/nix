@@ -11,13 +11,12 @@ CommonSSHStoreConfig::CommonSSHStoreConfig(const ParsedURL::Authority & authorit
 
 void CommonSSHStoreConfig::anchor() {}
 
-SSHMaster CommonSSHStoreConfig::createSSHMaster(bool useMaster, Descriptor logFD) const
+SSHMaster CommonSSHStoreConfig::createSSHMaster(Descriptor logFD) const
 {
     return {
         authority,
         sshKey.get(),
         sshPublicHostKey.get(),
-        useMaster,
         compress,
         logFD,
     };
