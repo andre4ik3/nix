@@ -177,6 +177,41 @@ public:
      */
     const std::string & getCurrentSystem() const;
 
+    Setting<Paths> replOverlays{
+        this,
+        {},
+        "repl-overlays",
+        R"(
+          A list of files containing Nix expressions that can be used to add
+          default bindings to [`nix repl`](@docroot@/command-ref/new-cli/nix3-repl.md)
+          sessions.
+
+          Each file is called with three arguments:
+          1. An [attribute set](@docroot@/language/values.md#attribute-set)
+             containing at least a
+             [`currentSystem`](@docroot@/language/builtins.md#builtins-currentSystem)
+             attribute.
+          2. The top-level bindings produced by the previous `repl-overlays`
+             value (or the default top-level bindings).
+          3. The final top-level bindings produced by calling all
+             `repl-overlays`.
+
+          For example, the following file would alias `pkgs` to
+          `legacyPackages.${info.currentSystem}` (if that attribute is defined):
+
+          ```nix
+          info: final: prev:
+          if prev ? legacyPackages
+             && prev.legacyPackages ? ${info.currentSystem}
+          then
+          {
+            pkgs = prev.legacyPackages.${info.currentSystem};
+          }
+          else
+          { }
+          ```
+        )"};
+
     Setting<bool> restrictEval{
         this,
         false,

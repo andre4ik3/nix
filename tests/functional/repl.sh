@@ -178,6 +178,48 @@ exec 3>&- # Close fifo
 wait $repl_pid # Wait for process to finish
 grep -q "afterChange" repl_output
 
+# Basic repl-overlays behavior.
+testReplResponse '
+pkgs
+' '{.*default = "my package";.*}' \
+  --repl-overlays "$testDir/repl/repl-overlay-packages-is-pkgs.nix" \
+  --file "$testDir/repl/repl-overlays-basic.nix"
+
+# Multiple repl-overlays compose in order and can reference the final result.
+testReplResponseNoRegex '
+var
+' '"abc"' \
+  --repl-overlays "$testDir/repl/repl-overlays-compose-1.nix $testDir/repl/repl-overlays-compose-2.nix" \
+  --file "$testDir/repl/repl-overlays-compose.nix"
+testReplResponseNoRegex '
+varUsingFinal
+' '"final value is: puppy"' \
+  --repl-overlays "$testDir/repl/repl-overlays-compose-1.nix $testDir/repl/repl-overlays-compose-2.nix" \
+  --file "$testDir/repl/repl-overlays-compose.nix"
+
+# Overlays that don't destructure the first argument are allowed.
+testReplResponseNoRegex '
+1
+' '1' \
+  --repl-overlays "$testDir/repl/repl-overlay-no-formals.nix"
+
+# repl-overlays should still load in pure evaluation mode.
+testReplResponseNoRegex '
+foo
+' '2' \
+  --pure-eval \
+  --repl-overlays "$testDir/repl/repl-overlay-trivial.nix"
+
+# Overlays destructuring the first argument must include `...`.
+expectStderr 1 nix repl --repl-overlays "$testDir/repl/repl-overlay-no-dotdotdot.nix" <<< '1' \
+  | grepQuiet -F "Expected first argument of repl-overlays to have ... to allow future versions of Nix to add additional attributes to the argument"
+
+# Overlay evaluation failures should fail repl startup.
+expectStderr 1 nix repl \
+  --repl-overlays "$testDir/repl/repl-overlay-fail.nix" \
+  --file "$testDir/repl/repl-overlays-basic.nix" <<< '1' \
+  | grepQuiet -F "uh oh!"
+
 # Regression: `:reload` on a flake loaded from a *git* work tree must pick up
 # uncommitted changes. Guards against the per-process workdir-info cache
 # pinning the tree to the rev seen on first load.
