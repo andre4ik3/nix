@@ -55,9 +55,7 @@ public:
         : Store{*config}
         , RemoteStore{*config}
         , config{config}
-        , master(config->createSSHMaster(
-              // Use SSH master only if using more than 1 connection.
-              connections->capacity() > 1))
+        , master(config->createSSHMaster())
     {
     }
 

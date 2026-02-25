@@ -23,14 +23,12 @@ private:
      * Raw bytes, not Base64 encoding.
      */
     const std::string sshPublicHostKey;
-    const bool useMaster;
     const bool compress;
     const Descriptor logFD;
 
     /**
-     * Temporary directory for the SSH master's control socket and the
-     * known hosts file. Only created if needed, i.e. if we use an SSH
-     * master or have a public host key.
+     * Temporary directory for the known hosts file, only created if
+     * we have a public host key.
      */
     const std::shared_ptr<const AutoDelete> tmpDir;
 
@@ -39,22 +37,7 @@ private:
      */
     const std::optional<std::filesystem::path> knownHostsFile;
 
-    struct State
-    {
-#ifndef _WIN32 // TODO re-enable on Windows, once we can start processes.
-        Pid sshMaster;
-#endif
-        std::filesystem::path socketPath;
-    };
-
-    Sync<State> state_;
-
-    void addCommonSSHOpts(OsStrings & args, std::optional<std::filesystem::path> socketPath);
-    bool isMasterRunning(std::filesystem::path socketPath);
-
-#ifndef _WIN32 // TODO re-enable on Windows, once we can start processes.
-    std::optional<std::filesystem::path> startMaster();
-#endif
+    void addCommonSSHOpts(OsStrings & args);
 
 public:
 
@@ -62,7 +45,6 @@ public:
         const ParsedURL::Authority & authority,
         std::optional<std::filesystem::path> keyFile,
         std::string_view sshPublicHostKey,
-        bool useMaster,
         bool compress,
         Descriptor logFD = INVALID_DESCRIPTOR);
 

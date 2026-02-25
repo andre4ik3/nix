@@ -44,8 +44,6 @@ let
       }
     '';
 
-  supportsBadShell = lib.versionAtLeast config.nodes.client.nix.package.version "2.25pre";
-
   supportsCustomPort = lib.versionAtLeast config.nodes.client.nix.package.version "2.31.0pre20250806";
 in
 
@@ -96,17 +94,22 @@ in
           virtualisation.writableStore = true;
           virtualisation.additionalPaths = [ config.system.build.extraUtils ];
           nix.settings.substituters = lib.mkForce [ ];
-          programs.ssh.extraConfig = "ConnectTimeout 30";
-          environment.systemPackages = [
-            # `bad-shell` is used to make sure Nix works in an environment with a misbehaving shell.
-            #
-            # More realistically, a bad shell would still run the command ("echo started")
-            # but considering that our solution is to avoid this shell (set via $SHELL), we
-            # don't need to bother with a more functional mock shell.
-            (pkgs.writeScriptBin "bad-shell" ''
-              #!${pkgs.runtimeShell}
-              echo "Hello, I am a broken shell"
-            '')
+          programs.ssh.extraConfig = ''
+            ConnectTimeout 30
+            Host builder2-cs
+              HostName        builder2
+              ControlMaster   auto
+              ControlPersist  yes
+              ControlPath     ~/.ssh/builder2-cs.sock
+          '';
+          specialisation.with-sharing.configuration.nix.buildMachines = lib.mkForce [
+            {
+              hostName = "builder2-cs";
+              sshUser = "root";
+              sshKey = "/root/.ssh/id_ed25519";
+              system = "i686-linux";
+              maxJobs = 1;
+            }
           ];
         };
     };
@@ -144,15 +147,9 @@ in
               'echo hello world on $(hostname)' >&2
           """)
 
-        ${lib.optionalString supportsBadShell ''
-          # Check that SSH uses SHELL for LocalCommand, as expected, and check that
-          # our test setup here is working. The next test will use this bad SHELL.
-          client.succeed(f"SHELL=$(which bad-shell) ssh -oLocalCommand='true' -oPermitLocalCommand=yes {builder1.name} 'echo hello world' | grep -F 'Hello, I am a broken shell'")
-        ''}
-
         # Perform a build and check that it was performed on the builder.
         out = client.succeed(
-          "${lib.optionalString supportsBadShell "SHELL=$(which bad-shell)"} nix-build ${expr nodes.client 1} 2> build-output",
+          "nix-build ${expr nodes.client 1} 2> build-output",
           "grep -q Hello build-output"
         )
         builder1.succeed(f"test -e {out}")
@@ -169,6 +166,12 @@ in
         # Test whether the build hook automatically skips unavailable builders.
         builder1.block()
         client.succeed("nix-build ${expr nodes.client 4}")
+
+        # test that connection sharing configured by the user doesn't break anything
+        client.succeed("/run/current-system/specialisation/with-sharing/bin/switch-to-configuration test")
+        client.succeed("ssh builder2-cs true")
+        client.succeed("ssh -O check builder2-cs")
+        client.succeed("nix-build ${expr nodes.client 6}")
       '';
   };
 }
