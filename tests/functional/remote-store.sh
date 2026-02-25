@@ -4,6 +4,12 @@ source common.sh
 
 TODO_NixOS
 
+# Set up a profile generation for `nix doctor`
+profile="$HOME/.local/state/nix/profiles/profile"
+mkdir -p "$(dirname "$profile")"
+ln -s /dev/null "$profile-1-link"
+ln -s "$(basename "$profile")-1-link" "$profile"
+
 # Ensure "fake ssh" remote store works just as legacy fake ssh would.
 nix --store ssh-ng://localhost?remote-store="$TEST_ROOT"/other-store doctor
 
