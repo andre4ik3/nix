@@ -27,7 +27,7 @@ child=$!
 echo PID=$child
 cat "$fifo"
 
-expectStderr 1 nix-store --delete "$openPath" | grepQuiet "Cannot delete path.*because it's referenced by the GC root '/proc/"
+expectStderr 1 nix-store --delete "$openPath" | grepQuiet "Cannot delete some of the given paths because they are still alive"
 
 nix-store --gc
 
