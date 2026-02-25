@@ -11,6 +11,8 @@ export NIX_BUILD_USER_NAME_TEMPLATE="nixbld%d"
 readonly SERVICE_SRC=/lib/systemd/system/nix-daemon.service
 readonly SERVICE_DEST=/etc/systemd/system/nix-daemon.service
 
+readonly SERVICE_TEMPLATE_SRC=/lib/systemd/system/nix-daemon@.service
+
 readonly SOCKET_SRC=/lib/systemd/system/nix-daemon.socket
 readonly SOCKET_DEST=/etc/systemd/system/nix-daemon.socket
 
@@ -109,6 +111,9 @@ poly_configure_nix_daemon_service() {
         _sudo "to set up the nix-daemon service" \
               systemctl link "/nix/var/nix/profiles/default$SERVICE_SRC"
 
+        _sudo "to set up the nix-daemon template service" \
+              systemctl link "/nix/var/nix/profiles/default$SERVICE_TEMPLATE_SRC"
+
         _sudo "to set up the nix-daemon socket service" \
               systemctl enable "/nix/var/nix/profiles/default$SOCKET_SRC"
 
@@ -117,11 +122,11 @@ poly_configure_nix_daemon_service() {
         _sudo "to load the systemd unit for nix-daemon" \
               systemctl daemon-reload
 
+        # Starting the socket stops a previously running nix-daemon.service
+        # via the mutual Conflicts=; each connection now gets its own
+        # nix-daemon@.service instance.
         _sudo "to start the nix-daemon.socket" \
               systemctl start nix-daemon.socket
-
-        _sudo "to start the nix-daemon.service" \
-              systemctl restart nix-daemon.service
     else
         reminder "I don't support your init system yet; you may want to add nix-daemon manually."
     fi

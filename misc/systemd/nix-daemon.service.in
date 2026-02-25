@@ -1,6 +1,7 @@
 [Unit]
 Description=Nix Daemon
 Documentation=man:nix-daemon https://nixos.org/manual
+Conflicts=nix-daemon.socket
 RequiresMountsFor=@storedir@
 RequiresMountsFor=@localstatedir@
 RequiresMountsFor=@localstatedir@/nix/db
@@ -11,7 +12,8 @@ ExecStart=@@bindir@/nix-daemon nix-daemon --daemon
 KillMode=process
 LimitNOFILE=1048576
 TasksMax=1048576
-Delegate=
+Delegate=yes
+DelegateSubgroup=supervisor
 
 [Install]
 WantedBy=multi-user.target
