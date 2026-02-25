@@ -50,6 +50,12 @@ namespace nix {
 class Args;
 class AbstractSetting;
 
+struct ApplyConfigOptions
+{
+    std::optional<Path> path;
+    std::optional<Path> home;
+};
+
 class AbstractConfig
 {
 private:
@@ -89,6 +95,7 @@ public:
      * - path: location of the configuration file
      */
     void applyConfig(const std::string & contents, const std::string & path = "<unknown>");
+    void applyConfig(const std::string & contents, const ApplyConfigOptions & options);
 
     /**
      * Resets the `overridden` flag of all Settings
@@ -561,6 +568,25 @@ inline void formatHelper(F & f, const Setting<AbsolutePath> & x) = delete;
 
 template<>
 void BaseSetting<std::set<std::filesystem::path>>::appendOrSet(std::set<std::filesystem::path> newValue, bool append);
+
+/**
+ * A list of paths separated by whitespace.
+ *
+ * Relative paths are resolved relative to the config file when parsing
+ * configuration files.
+ */
+class PathsSetting : public BaseSetting<Paths>
+{
+public:
+    PathsSetting(
+        Config * options,
+        const Paths & def,
+        const std::string & name,
+        const std::string & description,
+        const StringSet & aliases = {});
+
+    Paths parse(const std::string & str) const override;
+};
 
 struct ExperimentalFeatureSettings : Config
 {

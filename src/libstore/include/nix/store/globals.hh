@@ -261,7 +261,7 @@ public:
         )",
         {"binary-cache-public-keys"}};
 
-    Setting<Strings> secretKeyFiles{
+    PathsSetting secretKeyFiles{
         this,
         {},
         "secret-key-files",

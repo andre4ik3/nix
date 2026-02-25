@@ -177,7 +177,7 @@ public:
      */
     const std::string & getCurrentSystem() const;
 
-    Setting<Paths> replOverlays{
+    PathsSetting replOverlays{
         this,
         {},
         "repl-overlays",
