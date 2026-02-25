@@ -1194,8 +1194,8 @@ void LocalStore::doAddToStore(const ValidPathInfo & info, Source & source, Repai
             throw Error(
                 "ca hash mismatch importing path '%s';\n  specified: %s\n  got:       %s",
                 printStorePath(info.path),
-                specified.hash.to_string(HashFormat::Nix32, true),
-                actualHash.hash.to_string(HashFormat::Nix32, true));
+                specified.hash.to_string(HashFormat::SRI, true),
+                actualHash.hash.to_string(HashFormat::SRI, true));
         }
     }
 
@@ -1677,8 +1677,8 @@ bool LocalStore::verifyStore(bool checkContents, RepairFlag repair)
                     printError(
                         "path '%s' was modified! expected hash '%s', got '%s'",
                         printStorePath(i),
-                        info->narHash.to_string(HashFormat::Nix32, true),
-                        current.hash.to_string(HashFormat::Nix32, true));
+                        info->narHash.to_string(HashFormat::SRI, true),
+                        current.hash.to_string(HashFormat::SRI, true));
                     if (repair)
                         repairPath(i);
                     else
