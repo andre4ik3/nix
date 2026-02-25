@@ -320,7 +320,7 @@ cat > "$flake1Dir/flake.nix" <<EOF
 EOF
 outPath=$(nix build --print-out-paths --no-link "$flake1Dir")
 
-expectStderr 1 nix provenance verify --all | grepQuiet "derivation .* may not be deterministic: output .* differs"
+expectStderr 1 nix provenance verify --all | grepQuiet "derivation .* may not be deterministic: outputs differ"
 
 # Test various types of source files.
 clearStore
