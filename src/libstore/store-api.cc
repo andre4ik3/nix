@@ -597,10 +597,21 @@ std::shared_ptr<const ValidPathInfo> Store::maybeQueryPathInfo(const StorePath &
     return promise.get_future().get();
 }
 
-static bool goodStorePath(const StorePath & expected, const StorePath & actual)
+static void ensureGoodStorePath(Store * store, const StorePath & expected, const StorePath & actual)
 {
-    return expected.hashPart() == actual.hashPart()
-           && (expected.name() == Store::MissingName || expected.name() == actual.name());
+    if (expected.hashPart() != actual.hashPart()) {
+        throw Error(
+            "the queried store path hash '%s' did not match expected '%s' while querying the store path '%s'",
+            actual.hashPart(),
+            expected.hashPart(),
+            store->printStorePath(expected));
+    } else if (expected.name() != Store::MissingName && expected.name() != actual.name()) {
+        throw Error(
+            "the queried store path name '%s' did not match expected '%s' while querying the store path '%s'",
+            actual.name(),
+            expected.name(),
+            store->printStorePath(expected));
+    }
 }
 
 std::optional<std::shared_ptr<const ValidPathInfo>> Store::queryPathInfoFromClientCache(const StorePath & storePath)
@@ -620,12 +631,12 @@ std::optional<std::shared_ptr<const ValidPathInfo>> Store::queryPathInfoFromClie
         auto res = diskCache->lookupNarInfo(config.getReference().render(/*FIXME withParams=*/false), hashPart);
         if (res.first != NarInfoDiskCache::oUnknown) {
             stats.narInfoReadAverted++;
-            pathInfoCache->lock()->upsert(
-                storePath,
-                res.first == NarInfoDiskCache::oInvalid ? PathInfoCacheValue{}
-                                                        : PathInfoCacheValue{.value = res.second});
-            if (res.first == NarInfoDiskCache::oInvalid || !goodStorePath(storePath, res.second->path))
+            if (res.first == NarInfoDiskCache::oInvalid) {
+                pathInfoCache->lock()->upsert(storePath, PathInfoCacheValue{});
                 return std::make_optional(nullptr);
+            }
+            ensureGoodStorePath(this, storePath, res.second->path);
+            pathInfoCache->lock()->upsert(storePath, PathInfoCacheValue{.value = res.second});
             assert(res.second);
             return std::make_optional(res.second);
         }
@@ -645,7 +656,7 @@ void Store::queryPathInfo(const StorePath & storePath, Callback<ref<const ValidP
             if (info)
                 return callback(ref(info));
             else
-                throw InvalidPath("path '%s' is not valid", printStorePath(storePath));
+                throw InvalidPath("path '%s' does not exist in the store", printStorePath(storePath));
         }
     } catch (...) {
         return callback.rethrow();
@@ -658,14 +669,19 @@ void Store::queryPathInfo(const StorePath & storePath, Callback<ref<const ValidP
             try {
                 auto info = fut.get();
 
+                if (info) {
+                    // Check returned path data before caching.
+                    ensureGoodStorePath(this, storePath, info->path);
+                }
+
                 if (diskCache)
                     diskCache->upsertNarInfo(config.getReference().render(/*FIXME withParams=*/false), hashPart, info);
 
                 pathInfoCache->lock()->upsert(storePath, PathInfoCacheValue{.value = info});
 
-                if (!info || !goodStorePath(storePath, info->path)) {
+                if (!info) {
                     stats.narInfoMissing++;
-                    throw InvalidPath("path '%s' is not valid", printStorePath(storePath));
+                    throw InvalidPath("path '%s' does not exist in the store", printStorePath(storePath));
                 }
 
                 (*callbackPtr)(ref<const ValidPathInfo>(info));
