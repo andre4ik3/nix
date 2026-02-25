@@ -253,6 +253,36 @@ static std::pair<TrustedFlag, std::optional<std::string>> authPeer(const unix::P
     return {trusted, std::move(user)};
 }
 
+static void updatePeerPidArg(char * peerPidArg, std::optional<pid_t> peerPid)
+{
+    if (!peerPidArg || !peerPid)
+        return;
+
+    auto processName = std::to_string(*peerPid);
+    auto argLen = strlen(peerPidArg);
+    if (processName.size() < argLen) {
+        memset(peerPidArg, ' ', argLen);
+        peerPidArg[0] = '\0';
+        memcpy(peerPidArg + 1, processName.c_str(), processName.size());
+    }
+}
+
+static std::pair<bool, int> getSocketActivationConnection()
+{
+    auto listenFds = getEnv("LISTEN_FDS");
+    if (listenFds) {
+        if (getEnv("LISTEN_PID") != std::to_string(getpid()) || listenFds != "1")
+            throw Error("unexpected systemd environment variables");
+        unix::closeOnExec(SD_LISTEN_FDS_START);
+        return {true, SD_LISTEN_FDS_START};
+    }
+
+    if (fcntl(SD_LISTEN_FDS_START, F_GETFD) != -1)
+        return {false, SD_LISTEN_FDS_START};
+
+    throw Error("expected socket-activated connection on file descriptor %1%", SD_LISTEN_FDS_START);
+}
+
 /**
  * Run a server. The loop opens a socket and accepts new connections from that
  * socket.
@@ -394,10 +424,7 @@ static void daemonLoop(
                         setSigChldAction(false);
 
                         // For debugging, stuff the pid into argv[1].
-                        if (peer.pid && savedArgv[1]) {
-                            auto processName = std::to_string(*peer.pid);
-                            strncpy(savedArgv[1], processName.c_str(), strlen(savedArgv[1]));
-                        }
+                        updatePeerPidArg(savedArgv ? savedArgv[1] : nullptr, peer.pid);
 
                         // Handle the connection.
                         auto store = storeConfig->openStore();
@@ -416,6 +443,61 @@ static void daemonLoop(
     } catch (Interrupted & e) {
         return;
     }
+}
+
+static void
+daemonInstance(ref<StoreConfig> storeConfig, std::optional<TrustedFlag> forceTrustClientOpt, char * peerPidArg)
+{
+    auto [launchedByManager, connectionFd] = getSocketActivationConnection();
+
+#ifdef __linux__
+    if (settings.getLocalSettings().useCgroups) {
+        experimentalFeatureSettings.require(Xp::Cgroups);
+
+        if (launchedByManager) {
+            /* The service manager has already placed us in a sub-cgroup
+               of the delegated service cgroup (`DelegateSubgroup=`), so
+               that the service cgroup itself stays free of processes.
+               Build cgroups must be created as siblings of our
+               sub-cgroup, not inside it, so use our parent as the root
+               cgroup. */
+            auto current = getCurrentCgroup();
+            setRootCgroup(current.parent().value_or(current));
+        }
+    }
+#endif
+
+    unix::PeerInfo peer = unix::getPeerInfo(connectionFd);
+    TrustedFlag trusted;
+    std::optional<std::string> userName;
+
+    if (forceTrustClientOpt)
+        trusted = *forceTrustClientOpt;
+    else {
+        try {
+            auto [_trusted, _userName] = authPeer(peer);
+            trusted = _trusted;
+            userName = _userName;
+        } catch (const Error &) {
+            FdSink sink(connectionFd);
+            sink << WORKER_MAGIC_ACCESS_DENIED;
+            throw;
+        }
+    }
+
+    printInfo(
+        (std::string) "accepted connection from pid %1%, user %2%" + (trusted ? " (trusted)" : ""),
+        peer.pid ? std::to_string(*peer.pid) : "<unknown>",
+        userName.value_or("<unknown>"));
+
+    updatePeerPidArg(peerPidArg, peer.pid);
+
+    if (!launchedByManager && setsid() == -1)
+        throw SysError("creating a new session");
+
+    auto store = storeConfig->openStore();
+    store->init();
+    processConnection(store, FdSource(connectionFd), FdSink(connectionFd), trusted, NotRecursive);
 }
 
 /**
@@ -491,17 +573,25 @@ struct StdIO
 using UnixSocket = std::optional<std::filesystem::path>;
 
 /**
+ * Tag indicating the daemon should process one socket-activated connection.
+ */
+struct SocketActivated
+{
+    char * peerPidArg;
+};
+
+/**
  * How the daemon should accept connections. See the underlying types for
  * details on each choice.
  */
-using DaemonMode = std::variant<StdIO, UnixSocket>;
+using DaemonMode = std::variant<StdIO, UnixSocket, SocketActivated>;
 
 /**
  * Entry point shared between the new CLI `nix daemon` and old CLI
  * `nix-daemon`.
  *
  * @param storeConfig The store configuration to use for opening stores.
- * @param mode How the daemon accepts connections; stdio or UNIX socket.
+ * @param mode How the daemon accepts connections.
  * @param forceTrustClientOpt See `daemonLoop()` and the parameter with
  * the same name over there for details.
  *
@@ -550,6 +640,9 @@ static void runDaemon(
 
                 daemonLoop(storeConfig, forceTrustClientOpt, std::move(socketPath));
             },
+            [&](SocketActivated socketActivated) {
+                daemonInstance(storeConfig, forceTrustClientOpt, socketActivated.peerPidArg);
+            },
         },
         mode);
 }
@@ -560,6 +653,8 @@ static int main_nix_daemon(int argc, char ** argv)
         auto stdio = false;
         std::optional<TrustedFlag> isTrustedOpt = std::nullopt;
         auto processOps = false;
+        bool socketActivatedInstance = false;
+        char * peerPidArg = nullptr;
 
         parseCmdLine(argc, argv, [&](Strings::iterator & arg, const Strings::iterator & end) {
             if (*arg == "--daemon")
@@ -582,6 +677,14 @@ static int main_nix_daemon(int argc, char ** argv)
             } else if (*arg == "--process-ops") {
                 experimentalFeatureSettings.require(Xp::MountedSSHStore);
                 processOps = true;
+            } else if (*arg == "--for-socket-activation") {
+                socketActivatedInstance = true;
+                for (int i = 1; i < argc; i++) {
+                    if (strcmp(argv[i], "--for-socket-activation") == 0) {
+                        peerPidArg = argv[i] + strlen("--for");
+                        break;
+                    }
+                }
             } else
                 return false;
             return true;
@@ -589,7 +692,9 @@ static int main_nix_daemon(int argc, char ** argv)
 
         runDaemon(
             resolveStoreConfig(StoreReference{settings.storeUri.get()}),
-            stdio ? DaemonMode{StdIO{}} : DaemonMode{UnixSocket{}},
+            stdio                    ? DaemonMode{StdIO{}}
+            : socketActivatedInstance ? DaemonMode{SocketActivated{peerPidArg}}
+                                      : DaemonMode{UnixSocket{}},
             isTrustedOpt,
             processOps);
 

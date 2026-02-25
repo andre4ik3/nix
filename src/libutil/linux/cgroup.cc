@@ -168,9 +168,16 @@ CanonPath getCurrentCgroup()
     return CanonPath{ourCgroup};
 }
 
+static std::optional<CanonPath> rootCgroupOverride;
+
+void setRootCgroup(const CanonPath & cgroup)
+{
+    rootCgroupOverride = cgroup;
+}
+
 CanonPath getRootCgroup()
 {
-    static auto rootCgroup = getCurrentCgroup();
+    static auto rootCgroup = rootCgroupOverride ? *rootCgroupOverride : getCurrentCgroup();
     return rootCgroup;
 }
 

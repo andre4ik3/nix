@@ -1,19 +1,15 @@
 [Unit]
-Description=Nix Daemon
+Description=Nix Daemon instance
 Documentation=man:nix-daemon https://nixos.org/manual
-Conflicts=nix-daemon.socket
+CollectMode=inactive-or-failed
 RequiresMountsFor=@storedir@
 RequiresMountsFor=@localstatedir@
 RequiresMountsFor=@localstatedir@/nix/db
-ConditionPathIsReadWrite=@localstatedir@/nix/daemon-socket
 
 [Service]
-ExecStart=@@bindir@/nix-daemon nix-daemon --daemon
-KillMode=process
+ExecStart=@@bindir@/nix-daemon nix-daemon --for-socket-activation
+CacheDirectory=nix
 LimitNOFILE=1048576
 TasksMax=1048576
 Delegate=yes
 DelegateSubgroup=supervisor
-
-[Install]
-WantedBy=multi-user.target
