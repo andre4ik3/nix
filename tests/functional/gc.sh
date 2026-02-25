@@ -21,10 +21,10 @@ if nix-store --gc --print-dead | grep -E "$outPath"$; then false; fi
 nix-store --gc --print-dead
 
 inUse=$(readLink "$outPath/reference-to-input-2")
-expectStderr 1 nix-store --delete "$inUse" | grepQuiet "Cannot delete path.*because it's referenced by path '"
+expectStderr 1 nix-store --delete "$inUse" | grepQuiet "Cannot delete some of the given paths because they are still alive"
 test -e "$inUse"
 
-expectStderr 1 nix-store --delete "$outPath" | grepQuiet "Cannot delete path.*because it's referenced by the GC root "
+expectStderr 1 nix-store --delete "$outPath" | grepQuiet "Cannot delete some of the given paths because they are still alive"
 test -e "$outPath"
 
 for i in "$NIX_STORE_DIR"/*; do
@@ -43,6 +43,12 @@ cat "$outPath/reference-to-input-2/bar"
 if test -e "$drvPath"; then false; fi
 
 rm "$NIX_STATE_DIR/gcroots/foo"
+
+# Deleting a closure should report its combined statistics correctly.
+mapfile -t closure < <(nix-store -qR "$outPath")
+nix-store --delete "${closure[@]}" > delete-output
+grepQuiet -E "^[1-9][0-9]* store paths deleted, 10[0-9][.][0-9] KiB freed$" delete-output
+test -z "$(grep "0 paths deleted" delete-output)"
 
 nix-collect-garbage
 
