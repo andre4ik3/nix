@@ -1,4 +1,5 @@
 #include "nix/cmd/command.hh"
+#include "nix/store/binary-cache-store.hh"
 #include "nix/store/store-api.hh"
 #include "nix/util/nar-accessor.hh"
 #include "nix/main/common-args.hh"
@@ -7,6 +8,29 @@
 #include "ls.hh"
 
 namespace nix {
+
+static NarListing parseCachedNarListing(const nlohmann::json & json)
+{
+    auto listing = json.get<NarListing>();
+
+    [&](this const auto & recurse, const NarListing & current) -> void {
+        std::visit(
+            overloaded{
+                [&](const NarListing::Regular & regular) {
+                    if (!regular.contents.narOffset)
+                        throw Error("nar listing entry is missing narOffset");
+                },
+                [&](const NarListing::Directory & directory) {
+                    for (const auto & entry : directory.entries)
+                        recurse(entry.second);
+                },
+                [&](const NarListing::Symlink &) {},
+            },
+            current.raw);
+    }(listing);
+
+    return listing;
+}
 
 struct MixLs : virtual Args, MixJSON, MixLongListing
 {
@@ -114,7 +138,40 @@ struct CmdLsStore : StoreCommand, MixLs
     void run(ref<Store> store) override
     {
         auto [storePath, rest] = store->toStorePath(path);
-        list(store->requireStoreObjectAccessor(storePath), rest);
+        std::shared_ptr<SourceAccessor> accessor;
+
+        if (auto binaryCacheStore = store.dynamic_pointer_cast<BinaryCacheStore>()) {
+            auto warnBadListing = [&](std::string_view msg) {
+                warn(
+                    "nar listing for %s on %s is bad (falling back to full nar download): %s",
+                    store->printStorePath(storePath),
+                    binaryCacheStore->config.getHumanReadableURI(),
+                    msg);
+            };
+            try {
+                if (auto file = binaryCacheStore->getFile(fmt("%s.ls", storePath.hashPart()))) {
+                    auto listing = nlohmann::json::parse(*file, nullptr, true, true);
+                    const auto * root = &listing;
+                    if (listing.contains("root"))
+                        root = &listing["root"];
+
+                    if (root->is_object() && root->contains("type"))
+                        accessor = makeLazyNarAccessor(parseCachedNarListing(*root), [](uint64_t, uint64_t, Sink &) {
+                                       throw Error("attempted to read NAR content during listing");
+                                   }).get_ptr();
+                }
+            } catch (NoSuchBinaryCacheFile &) {
+            } catch (Error & e) {
+                warnBadListing(e.what());
+            } catch (const nlohmann::json::exception & e) {
+                warnBadListing(e.what());
+            }
+        }
+
+        if (accessor)
+            list(ref<SourceAccessor>(accessor), rest);
+        else
+            list(store->requireStoreObjectAccessor(storePath), rest);
     }
 };
 
