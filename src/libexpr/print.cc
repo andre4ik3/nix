@@ -343,6 +343,11 @@ private:
             printRepeated();
             return;
         } else if (depth < options.maxDepth || v.attrs()->empty()) {
+            bool isPrintingReplDerivation = depth == 0 && options.replDerivation && state.isDerivation(v);
+            if (isPrintingReplDerivation) {
+                // Switch back to path elision for nested derivation values.
+                options.derivationPaths = true;
+            }
             increaseIndent();
             output << "{";
 
@@ -369,6 +374,21 @@ private:
 
                 printAttributeName(output, i.first);
                 output << " = ";
+
+                // Elide repeated drvAttrs attribute when printing a top-level derivation in REPL.
+                if (isPrintingReplDerivation && i.first == "drvAttrs") {
+                    state.forceValue(*i.second, noPos);
+                    if (i.second->type() == nAttrs) {
+                        printElided(i.second->attrs()->size(), "attribute", "attributes");
+                    } else {
+                        print(*i.second, depth + 1);
+                    }
+                    output << ";";
+                    totalAttrsPrinted++;
+                    currentAttrsPrinted++;
+                    continue;
+                }
+
                 print(*i.second, depth + 1);
                 output << ";";
                 totalAttrsPrinted++;
@@ -659,7 +679,6 @@ public:
             seen.reset();
         }
 
-        ValuesSeen seen;
         print(v, 0);
     }
 };
