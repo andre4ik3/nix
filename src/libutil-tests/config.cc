@@ -1,4 +1,6 @@
 #include "nix/util/configuration.hh"
+#include "nix/util/args.hh"
+#include "nix/util/file-system.hh"
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -324,5 +326,62 @@ TEST(Config, applyConfigInvalidThrows)
     Config config;
     ASSERT_THROW(config.applyConfig("value == key"), UsageError);
     ASSERT_THROW(config.applyConfig("value "), UsageError);
+}
+
+TEST(Config, applyConfigPathSettingRelativeAndHomePaths)
+{
+    Config config;
+    PathSetting setting{&config, "/default.nix", "path-setting", "path setting"};
+
+    config.applyConfig(
+        "path-setting = ./doggy.nix",
+        ApplyConfigOptions{
+            .path = "/tmp/puppy/config/nix.conf",
+            .home = "/home/puppy",
+        });
+    ASSERT_EQ(setting.get(), "/tmp/puppy/config/doggy.nix");
+
+    config.applyConfig(
+        "path-setting = ~/.config/nix/repl.nix",
+        ApplyConfigOptions{
+            .path = "/tmp/puppy/config/nix.conf",
+            .home = "/home/puppy",
+        });
+    ASSERT_EQ(setting.get(), "/home/puppy/.config/nix/repl.nix");
+}
+
+TEST(Config, applyConfigPathsSettingRelativeAndHomePaths)
+{
+    Config config;
+    PathsSetting setting{&config, {}, "paths-setting", "paths setting"};
+
+    config.applyConfig(
+        "paths-setting = ./one.nix /two.nix ~/three.nix",
+        ApplyConfigOptions{
+            .path = "/tmp/puppy/config/nix.conf",
+            .home = "/home/puppy",
+        });
+
+    ASSERT_EQ(setting.get(), Paths({"/tmp/puppy/config/one.nix", "/two.nix", "/home/puppy/three.nix"}));
+}
+
+TEST(Config, applyConfigIncludeResolvesRelativePathsFromIncludedFile)
+{
+    Config config;
+    PathSetting setting{&config, "/default.nix", "path-setting", "path setting"};
+
+    auto tmpDir = createTempDir();
+    AutoDelete delTmpDir(tmpDir, true);
+    createDirs(tmpDir / ".config" / "nix");
+    writeFile(tmpDir / ".config" / "nix" / "included.conf", "path-setting = ../overlay.nix\n");
+
+    config.applyConfig(
+        "include ~/.config/nix/included.conf",
+        ApplyConfigOptions{
+            .path = (tmpDir / "nix.conf").string(),
+            .home = tmpDir.string(),
+        });
+
+    ASSERT_EQ(setting.get(), (tmpDir / ".config" / "overlay.nix").string());
 }
 } // namespace nix

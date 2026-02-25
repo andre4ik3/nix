@@ -111,28 +111,38 @@ Settings::Settings()
 
 void loadConfFile(AbstractConfig & config)
 {
-    auto applyConfigFile = [&](const std::filesystem::path & path) {
+    auto applyConfigFile = [&](const ApplyConfigOptions & options) {
         try {
-            std::string contents = readFile(path);
-            config.applyConfig(contents, path.string());
+            if (!options.path)
+                return;
+            std::string contents = readFile(*options.path);
+            config.applyConfig(contents, options);
         } catch (SystemError &) {
         }
     };
 
-    applyConfigFile(nixConfFile());
+    applyConfigFile(
+        ApplyConfigOptions{
+            .path = nixConfFile().string(),
+        });
 
     /* We only want to send overrides to the daemon, i.e. stuff from
        ~/.nix/nix.conf or the command line. */
     config.resetOverridden();
 
     auto files = nixUserConfFiles();
+    auto home = getHome().string();
     for (auto file = files.rbegin(); file != files.rend(); file++) {
-        applyConfigFile(file->string());
+        applyConfigFile(
+            ApplyConfigOptions{
+                .path = file->string(),
+                .home = home,
+            });
     }
 
     auto nixConfEnv = getEnv("NIX_CONFIG");
     if (nixConfEnv.has_value()) {
-        config.applyConfig(nixConfEnv.value(), "NIX_CONFIG");
+        config.applyConfig(nixConfEnv.value(), ApplyConfigOptions{});
     }
 }
 

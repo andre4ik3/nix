@@ -100,17 +100,26 @@ void Config::getSettings(std::map<std::string, SettingInfo> & res, bool overridd
 }
 
 /**
- * Parse configuration in `contents`, and also the configuration files included from there, with their location
- * specified relative to `path`.
+ * Parse configuration in `contents`, and also the configuration files included from there.
  *
- * `contents` and `path` represent the file that is being parsed.
+ * `contents` and `options.path` represent the file that is being parsed.
  * The result is only an intermediate list of key-value pairs of strings.
  * More parsing according to the settings-specific semantics is being done by `loadConfFile` in `libstore/globals.cc`.
  */
+struct ParsedConfigLine
+{
+    std::string name;
+    std::string value;
+    ApplyConfigOptions options;
+};
+
+static std::string displayConfigSource(const ApplyConfigOptions & options)
+{
+    return options.path.value_or("<unknown>");
+}
+
 static void parseConfigFiles(
-    const std::string & contents,
-    const std::filesystem::path & path,
-    std::vector<std::pair<std::string, std::string>> & parsedContents)
+    const std::string & contents, const ApplyConfigOptions & options, std::vector<ParsedConfigLine> & parsedContents)
 {
     unsigned int pos = 0;
 
@@ -128,7 +137,7 @@ static void parseConfigFiles(
             continue;
 
         if (tokens.size() < 2)
-            throw UsageError("syntax error in configuration line '%s' in %s", line, PathFmt(path));
+            throw UsageError("syntax error in configuration line '%1%' in '%2%'", line, displayConfigSource(options));
 
         auto include = false;
         auto ignoreMissing = false;
@@ -141,24 +150,31 @@ static void parseConfigFiles(
 
         if (include) {
             if (tokens.size() != 2)
-                throw UsageError("syntax error in configuration line '%1%' in %s", line, PathFmt(path));
-            auto parent = path.parent_path();
-            auto p = absPath(std::filesystem::path{tokens[1]}, &parent);
+                throw UsageError(
+                    "syntax error in configuration line '%1%' in '%2%'", line, displayConfigSource(options));
+            if (!options.path)
+                throw UsageError("can only include configuration '%1%' from files", tokens[1]);
+            auto p = absPath(tildePath(tokens[1], options.home), dirOf(*options.path));
             if (pathExists(p)) {
                 try {
                     std::string includedContents = readFile(p);
-                    parseConfigFiles(includedContents, p, parsedContents);
+                    parseConfigFiles(
+                        includedContents,
+                        ApplyConfigOptions{
+                            .path = p,
+                            .home = options.home,
+                        },
+                        parsedContents);
                 } catch (SystemError &) {
                     // TODO: Do we actually want to ignore this? Or is it better to fail?
                 }
-            } else if (!ignoreMissing) {
-                throw Error("file %s included from %s not found", PathFmt(p), PathFmt(path));
-            }
+            } else if (!ignoreMissing)
+                throw Error("file '%1%' included from '%2%' not found", p, *options.path);
             continue;
         }
 
         if (tokens[1] != "=")
-            throw UsageError("syntax error in configuration line '%s' in %s", line, PathFmt(path));
+            throw UsageError("syntax error in configuration line '%1%' in '%2%'", line, displayConfigSource(options));
 
         std::string name = std::move(tokens[0]);
 
@@ -166,33 +182,65 @@ static void parseConfigFiles(
         advance(i, 2);
 
         parsedContents.push_back({
-            std::move(name),
-            concatStringsSep(" ", Strings(i, tokens.end())),
+            .name = std::move(name),
+            .value = concatStringsSep(" ", Strings(i, tokens.end())),
+            .options = options,
         });
     };
 }
 
 void AbstractConfig::applyConfig(const std::string & contents, const std::string & path)
 {
-    std::vector<std::pair<std::string, std::string>> parsedContents;
+    applyConfig(
+        contents,
+        ApplyConfigOptions{
+            .path = path == "<unknown>" ? std::optional<Path>{} : std::optional<Path>{path},
+        });
+}
 
-    parseConfigFiles(contents, path, parsedContents);
+static thread_local std::optional<ApplyConfigOptions> currentApplyConfigOptions;
+
+struct ConfigApplyOptionsGuard
+{
+    std::optional<ApplyConfigOptions> oldValue;
+
+    explicit ConfigApplyOptionsGuard(std::optional<ApplyConfigOptions> newValue)
+    {
+        oldValue = std::move(currentApplyConfigOptions);
+        currentApplyConfigOptions = std::move(newValue);
+    }
+
+    ~ConfigApplyOptionsGuard()
+    {
+        currentApplyConfigOptions = std::move(oldValue);
+    }
+};
+
+void AbstractConfig::applyConfig(const std::string & contents, const ApplyConfigOptions & options)
+{
+    std::vector<ParsedConfigLine> parsedContents;
+
+    parseConfigFiles(contents, options, parsedContents);
 
     // First apply experimental-feature related settings
-    for (const auto & [name, value] : parsedContents)
-        if (name == "experimental-features" || name == "extra-experimental-features")
-            set(name, value);
+    for (const auto & parsedLine : parsedContents)
+        if (parsedLine.name == "experimental-features" || parsedLine.name == "extra-experimental-features") {
+            ConfigApplyOptionsGuard optionsGuard(parsedLine.options);
+            set(parsedLine.name, parsedLine.value);
+        }
 
     // Then apply other settings
     // XXX: NIX_PATH must override the regular setting! This is done in `initGC()`
     // Environment variables overriding settings should probably be part of the Config mechanism,
     // but at the time of writing it's not worth building that for just one thing
-    for (const auto & [name, value] : parsedContents) {
-        if (name != "experimental-features" && name != "extra-experimental-features") {
-            if ((name == "nix-path" || name == "extra-nix-path") && getEnv("NIX_PATH").has_value()) {
+    for (const auto & parsedLine : parsedContents) {
+        if (parsedLine.name != "experimental-features" && parsedLine.name != "extra-experimental-features") {
+            if ((parsedLine.name == "nix-path" || parsedLine.name == "extra-nix-path")
+                && getEnv("NIX_PATH").has_value()) {
                 continue;
             }
-            set(name, value);
+            ConfigApplyOptionsGuard optionsGuard(parsedLine.options);
+            set(parsedLine.name, parsedLine.value);
         }
     }
 }
@@ -493,8 +541,13 @@ static AbsolutePath parseAbsolutePath(const AbstractSetting & s, const std::stri
 {
     if (str == "")
         throw UsageError("setting '%s' is a path and paths cannot be empty", s.name);
-    else
-        return canonPath(str);
+
+    auto tildeResolvedPath = tildePath(str, currentApplyConfigOptions ? currentApplyConfigOptions->home : std::nullopt);
+
+    if (currentApplyConfigOptions && currentApplyConfigOptions->path)
+        return absPath(tildeResolvedPath, dirOf(*currentApplyConfigOptions->path));
+
+    return canonPath(tildeResolvedPath);
 }
 
 template<>
@@ -555,6 +608,25 @@ template class BaseSetting<std::filesystem::path>;
 template class BaseSetting<AbsolutePath>;
 template class BaseSetting<std::optional<AbsolutePath>>;
 template class BaseSetting<std::optional<std::string>>;
+
+PathsSetting::PathsSetting(
+    Config * options,
+    const Paths & def,
+    const std::string & name,
+    const std::string & description,
+    const StringSet & aliases)
+    : BaseSetting<Paths>(def, true, name, description, aliases)
+{
+    options->addSetting(this);
+}
+
+Paths PathsSetting::parse(const std::string & str) const
+{
+    Paths result;
+    for (const auto & token : tokenizeString<Strings>(str))
+        result.push_back(parseAbsolutePath(*this, token));
+    return result;
+}
 
 void ExperimentalFeatureSettings::anchor() {}
 

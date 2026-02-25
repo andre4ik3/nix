@@ -93,6 +93,20 @@ absPath(const std::filesystem::path & path0, const std::filesystem::path * dir, 
     return canonPath(path, resolveSymlinks);
 }
 
+Path tildePath(PathView path, const std::optional<PathView> & home)
+{
+    if (path.starts_with("~/")) {
+        if (!home)
+            throw UsageError("`~` path not allowed: %1%", path);
+        return concatStrings(*home, "/", path.substr(2));
+    }
+
+    if (path.starts_with('~'))
+        throw UsageError("`~` paths must start with `~/`: %1%", path);
+
+    return std::string(path);
+}
+
 std::filesystem::path canonPath(const std::filesystem::path & path, bool resolveSymlinks)
 {
     if (path.empty())
