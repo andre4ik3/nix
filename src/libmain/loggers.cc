@@ -18,6 +18,10 @@ LogFormat parseLogFormat(const std::string & logFormatStr)
         return LogFormat::bar;
     else if (logFormatStr == "bar-with-logs")
         return LogFormat::barWithLogs;
+    else if (logFormatStr == "multiline")
+        return LogFormat::multiline;
+    else if (logFormatStr == "multiline-with-logs")
+        return LogFormat::multilineWithLogs;
     throw Error("option 'log-format' has an invalid value '%s'", logFormatStr);
 }
 
@@ -34,6 +38,17 @@ std::unique_ptr<Logger> makeDefaultLogger()
         return makeProgressBar();
     case LogFormat::barWithLogs: {
         auto logger = makeProgressBar();
+        logger->setPrintBuildLogs(true);
+        return logger;
+    }
+    case LogFormat::multiline: {
+        auto logger = makeProgressBar();
+        logger->setPrintMultiline(true);
+        return logger;
+    }
+    case LogFormat::multilineWithLogs: {
+        auto logger = makeProgressBar();
+        logger->setPrintMultiline(true);
         logger->setPrintBuildLogs(true);
         return logger;
     }

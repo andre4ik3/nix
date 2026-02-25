@@ -194,6 +194,8 @@ public:
     }
 
     virtual void setPrintBuildLogs(bool printBuildLogs) {}
+
+    virtual void setPrintMultiline(bool printMultiline) {}
 };
 
 /**

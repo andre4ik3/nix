@@ -12,6 +12,7 @@
 #include <sstream>
 #include <iostream>
 #include <chrono>
+#include <limits>
 
 namespace nix {
 
@@ -84,6 +85,8 @@ private:
 
         uint64_t corruptedPaths = 0, untrustedPaths = 0;
 
+        int lastLines = 0;
+
         bool active = true;
         size_t suspensions = 0;
         bool haveUpdate = true;
@@ -104,6 +107,7 @@ private:
     std::condition_variable quitCV, updateCV;
 
     bool printBuildLogs = false;
+    bool printMultiline = false;
     bool isTTY;
 
     std::unique_ptr<InterruptCallback> interruptCallback, stopCallback, contCallback, winchCallback;
@@ -161,7 +165,7 @@ public:
             while (state->active) {
                 if (!state->haveUpdate)
                     state.wait_for(updateCV, nextWakeup);
-                nextWakeup = draw(*state);
+                nextWakeup = draw(*state, {});
                 state.wait_for(quitCV, std::chrono::milliseconds(50));
             }
         });
@@ -255,8 +259,7 @@ public:
     {
         if (state.active) {
             invalidateRedrawCache();
-            writeToStderr("\r\e[K" + filterANSIEscapes(s, !isTTY) + ANSI_NORMAL "\n");
-            draw(state);
+            draw(state, s);
         } else {
             writeToStderr(filterANSIEscapes(s, !isTTY) + "\n");
         }
@@ -385,10 +388,14 @@ public:
                 }
                 log(*state, lvlInfo, ANSI_FAINT + info.name.value_or("unnamed") + suffix + ANSI_NORMAL + lastLine);
             } else {
-                state->activities.erase(i->second);
-                info.lastLine = lastLine;
-                state->activities.emplace_back(info);
-                i->second = std::prev(state->activities.end());
+                if (!printMultiline) {
+                    state->activities.erase(i->second);
+                    info.lastLine = lastLine;
+                    state->activities.emplace_back(info);
+                    i->second = std::prev(state->activities.end());
+                } else {
+                    i->second->lastLine = lastLine;
+                }
                 update(*state);
             }
         }
@@ -475,7 +482,7 @@ public:
         writeToStderr("\r\e[K");
     }
 
-    std::chrono::milliseconds draw(State & state) noexcept
+    std::chrono::milliseconds draw(State & state, const std::optional<std::string_view> & s) noexcept
     {
         auto nextWakeup = std::chrono::milliseconds::max();
 
@@ -483,54 +490,86 @@ public:
         if (state.isPaused() || !state.active)
             return nextWakeup;
 
-        std::string line;
+        auto windowSize = getWindowSize();
+        auto width = windowSize.second;
+        if (width <= 0)
+            width = std::numeric_limits<decltype(width)>::max();
 
+        if (printMultiline && (state.lastLines >= 1)) {
+            // FIXME: make sure this works on windows
+            writeToStderr(fmt("\e[G\e[%dF\e[J", state.lastLines));
+        }
+
+        state.lastLines = 0;
+
+        if (s != std::nullopt)
+            writeToStderr("\r\e[K" + filterANSIEscapes(s.value(), !isTTY) + ANSI_NORMAL "\n");
+
+        std::string line;
         std::string status = getStatus(state);
         if (!status.empty()) {
             line += '[';
             line += status;
             line += "]";
         }
+        if (printMultiline && !line.empty()) {
+            writeToStderr(filterANSIEscapes(line, false, width) + "\n");
+            state.lastLines++;
+        }
+
+        auto height = windowSize.first > 0 ? windowSize.first : 25;
+        auto moreActivities = 0;
 
         auto now = std::chrono::steady_clock::now();
 
+        std::string activityLine;
         if (!state.activities.empty()) {
-            if (!status.empty())
-                line += " ";
-            auto i = state.activities.rbegin();
+            for (auto i = state.activities.begin(); i != state.activities.end(); ++i) {
+                if (!(i->visible && (!i->s.empty() || !i->lastLine.empty())))
+                    continue;
 
-            while (i != state.activities.rend()) {
-                if (i->visible && (!i->s.empty() || !i->lastLine.empty())) {
-                    /* Don't show activities until some time has
-                       passed, to avoid displaying very short
-                       activities. */
-                    auto delay = std::chrono::milliseconds(10);
-                    if (i->startTime + delay < now)
-                        break;
-                    else
-                        nextWakeup = std::min(
-                            nextWakeup,
-                            std::chrono::duration_cast<std::chrono::milliseconds>(delay - (now - i->startTime)));
+                /* Don't show activities until some time has
+                   passed, to avoid displaying very short
+                   activities. */
+                auto delay = std::chrono::milliseconds(10);
+                if (i->startTime + delay >= now) {
+                    nextWakeup = std::min(
+                        nextWakeup,
+                        std::chrono::duration_cast<std::chrono::milliseconds>(delay - (now - i->startTime)));
                 }
-                ++i;
-            }
 
-            if (i != state.activities.rend()) {
-                line += i->s;
+                activityLine = i->s;
                 if (!i->phase.empty()) {
-                    line += " (";
-                    line += i->phase;
-                    line += ")";
+                    activityLine += " (";
+                    activityLine += i->phase;
+                    activityLine += ")";
                 }
                 if (!i->lastLine.empty()) {
                     if (!i->s.empty())
-                        line += ": ";
-                    line += i->lastLine;
+                        activityLine += ": ";
+                    activityLine += i->lastLine;
+                }
+
+                if (printMultiline) {
+                    if (state.lastLines < (height - 1)) {
+                        writeToStderr(filterANSIEscapes(activityLine, false, width) + "\n");
+                        state.lastLines++;
+                    } else {
+                        moreActivities++;
+                    }
                 }
             }
         }
 
-        redraw("\r" + filterANSIEscapes(line, false, getWindowWidth()) + ANSI_NORMAL + "\e[K");
+        if (printMultiline && moreActivities)
+            writeToStderr(fmt("And %d more...", moreActivities));
+
+        if (!printMultiline) {
+            if (!status.empty())
+                line += " ";
+            line += activityLine;
+            redraw("\r" + filterANSIEscapes(line, false, width) + ANSI_NORMAL + "\e[K");
+        }
 
         return nextWakeup;
     }
@@ -713,7 +752,7 @@ public:
             invalidateRedrawCache();
             std::cerr << "\r\e[K";
             Logger::writeToStdout(s);
-            draw(*state);
+            draw(*state, {});
         } else {
             Logger::writeToStdout(s);
         }
@@ -731,13 +770,18 @@ public:
         hideCursorIfNeeded();
         if (s.size() != 1)
             return {};
-        draw(*state);
+        draw(*state, {});
         return s[0];
     }
 
     void setPrintBuildLogs(bool printBuildLogs) override
     {
         this->printBuildLogs = printBuildLogs;
+    }
+
+    void setPrintMultiline(bool printMultiline) override
+    {
+        this->printMultiline = printMultiline;
     }
 };
 
