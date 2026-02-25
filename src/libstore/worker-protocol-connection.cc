@@ -253,7 +253,7 @@ std::optional<UnkeyedValidPathInfo> WorkerProto::BasicClientConnection::queryPat
     try {
         processStderr(daemonException);
     } catch (Error & e) {
-        // Ugly backwards compatibility hack.
+        // Ugly backwards compatibility hack. TODO(fj#325): remove.
         if (e.msg().find("is not valid") != std::string::npos)
             return std::nullopt;
         throw;

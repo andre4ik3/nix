@@ -793,7 +793,7 @@ std::shared_ptr<const ValidPathInfo> LocalStore::queryPathInfoInternal(State & s
     auto useQueryPathInfo(state.stmts->QueryPathInfo.use().apply(printStorePath(path)));
 
     if (!useQueryPathInfo.next())
-        return std::shared_ptr<ValidPathInfo>();
+        return nullptr;
 
     auto id = useQueryPathInfo.getInt(0);
 
@@ -801,7 +801,7 @@ std::shared_ptr<const ValidPathInfo> LocalStore::queryPathInfoInternal(State & s
     try {
         narHash = Hash::parseAnyPrefixed(useQueryPathInfo.getStr(1));
     } catch (BadHash & e) {
-        throw Error("invalid-path entry for '%s': %s", printStorePath(path), e.what());
+        throw BadStorePath("bad hash in store path '%s': %s", printStorePath(path), e.what());
     }
 
     auto info = std::make_shared<LocalStorePathInfo>(ValidPathInfo(path, UnkeyedValidPathInfo(*this, narHash)), id);
@@ -865,7 +865,7 @@ uint64_t LocalStore::queryValidPathId(State & state, const StorePath & path)
 
     auto use(state.stmts->QueryValidPathId.use().apply(printStorePath(path)));
     if (!use.next())
-        throw InvalidPath("path '%s' is not valid", printStorePath(path));
+        throw InvalidPath("path '%s' does not exist", printStorePath(path));
     return use.getInt(0);
 }
 

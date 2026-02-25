@@ -26,6 +26,10 @@
 
 namespace nix {
 
+/**
+ * Denotes that a path in the store did not exist (but it could, had it
+ * been put there, i.e. it is still legal).
+ */
 MakeError(InvalidPath, Error);
 MakeError(Unsupported, Error);
 MakeError(SubstituteGone, Error);
@@ -471,9 +475,9 @@ public:
     StorePath followLinksToStorePath(std::string_view path) const;
 
     /**
-     * Check whether a path is valid. NOTE: this function does not
-     * generally cache whether a path is valid. You may want to use
-     * `maybeQueryPathInfo()`, which does cache.
+     * Check whether a path is valid. A path is valid when it exists in the
+     * store now. NOTE: this function does not generally cache whether a path
+     * is valid. You may want to use `maybeQueryPathInfo()`, which does cache.
      */
     bool isValidPath(const StorePath & path);
 
@@ -585,6 +589,10 @@ public:
 
 protected:
 
+    /**
+     * Query path info without cache writes.
+     * Implementations should return `nullptr` if the store path is not found.
+     */
     virtual void
     queryPathInfoUncached(const StorePath & path, Callback<std::shared_ptr<const ValidPathInfo>> callback) noexcept = 0;
     virtual void queryRealisationUncached(

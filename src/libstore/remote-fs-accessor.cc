@@ -15,7 +15,7 @@ std::pair<ref<SourceAccessor>, CanonPath> RemoteFSAccessor::fetch(const CanonPat
 {
     auto [storePath, restPath] = store->toStorePath(store->storeDir + path.abs());
     if (requireValidPath && !store->isValidPath(storePath))
-        throw InvalidPath("path '%1%' is not a valid store path", store->printStorePath(storePath));
+        throw InvalidPath("path '%1%' does not exist in remote store", store->printStorePath(storePath));
     return {ref{accessObject(storePath)}, restPath};
 }
 

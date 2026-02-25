@@ -6,7 +6,8 @@
 namespace nix {
 
 InvalidPathError::InvalidPathError(EvalState & state, const StorePath & path)
-    : CloneableError(state, "path '%s' is not valid", state.store->printStorePath(path))
+    : CloneableError(
+          state, "path '%s' did not exist in the store during evaluation", state.store->printStorePath(path))
     , path{path}
 {
 }

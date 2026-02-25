@@ -14,6 +14,10 @@ namespace nix {
 
 struct SourcePath;
 
+/**
+ * Denotes that a path could not possibly be a store path.
+ * E.g. outside of the Nix store, illegal characters in the name, etc.
+ */
 MakeError(BadStorePath, Error);
 MakeError(BadStorePathName, BadStorePath);
 

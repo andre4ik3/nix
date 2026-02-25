@@ -629,7 +629,7 @@ void BinaryCacheStore::queryPathInfoUncached(
                         auto data = fut.get();
 
                         if (!data)
-                            return (*callbackPtr)({});
+                            return (*callbackPtr)(nullptr);
 
                         stats.narInfoRead++;
 
