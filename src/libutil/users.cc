@@ -15,6 +15,9 @@ std::filesystem::path getCacheDir()
     auto dir = getEnvOs(OS_STR("NIX_CACHE_HOME"));
     if (dir)
         return *dir;
+    auto serviceDir = getEnv("CACHE_DIRECTORY");
+    if (serviceDir)
+        return *serviceDir;
 #ifndef _WIN32
     return unix::xdg::getCacheHome() / "nix";
 #else
