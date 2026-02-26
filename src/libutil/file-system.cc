@@ -5,6 +5,7 @@
 #include "nix/util/finally.hh"
 #include "nix/util/serialise.hh"
 #include "nix/util/util.hh"
+#include "nix/util/base-nix-32.hh"
 
 #include <atomic>
 #include <random>
@@ -14,6 +15,7 @@
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
+#include <span>
 
 #include <fcntl.h>
 #include <sys/types.h>
@@ -268,8 +270,8 @@ void readFile(const std::filesystem::path & path, Sink & sink, bool memory_map)
     drainFD(fd.get(), sink);
 }
 
-void writeFile(
-    const std::filesystem::path & path, std::string_view s, mode_t mode, FsSync sync, FinalSymlink finalSymlink)
+static AutoCloseFD
+openForWrite(const std::filesystem::path & path, mode_t mode, FinalSymlink finalSymlink)
 {
     AutoCloseFD fd = openNewFileForWrite(
         path,
@@ -280,6 +282,31 @@ void writeFile(
         });
     if (!fd)
         throw NativeSysError("opening file %s", PathFmt(path));
+    return fd;
+}
+
+static AutoCloseFD openForWriteExcl(const std::filesystem::path & path, mode_t mode)
+{
+    AutoCloseFD fd = openNewFileForWrite(path, mode, {.truncateExisting = false});
+    if (!fd)
+        throw NativeSysError("opening file %s", PathFmt(path));
+    return fd;
+}
+
+void writeFile(
+    const std::filesystem::path & path, std::string_view s, mode_t mode, FsSync sync, FinalSymlink finalSymlink)
+{
+    AutoCloseFD fd = openForWrite(path, mode, finalSymlink);
+
+    writeFile(fd.get(), s, sync, &path);
+
+    /* Close explicitly to propagate the exceptions. */
+    fd.close();
+}
+
+void writeFileExcl(const std::filesystem::path & path, std::string_view s, mode_t mode, FsSync sync)
+{
+    AutoCloseFD fd = openForWriteExcl(path, mode);
 
     writeFile(fd.get(), s, sync, &path);
 
@@ -304,15 +331,7 @@ void writeFile(Descriptor fd, std::string_view s, FsSync sync, const std::filesy
 
 void writeFile(const std::filesystem::path & path, Source & source, mode_t mode, FsSync sync, FinalSymlink finalSymlink)
 {
-    AutoCloseFD fd = openNewFileForWrite(
-        path,
-        mode,
-        {
-            .truncateExisting = true,
-            .followSymlinksOnTruncate = (finalSymlink == FinalSymlink::Follow),
-        });
-    if (!fd)
-        throw NativeSysError("opening file %s", PathFmt(path));
+    AutoCloseFD fd = openForWrite(path, mode, finalSymlink);
 
     std::array<char, 64 * 1024> buf;
 
@@ -332,6 +351,32 @@ void writeFile(const std::filesystem::path & path, Source & source, mode_t mode,
     if (sync == FsSync::Yes)
         fd.fsync();
     // Explicitly close to make sure exceptions are propagated.
+    fd.close();
+    if (sync == FsSync::Yes)
+        syncParent(path);
+}
+
+void writeFileExcl(const std::filesystem::path & path, Source & source, mode_t mode, FsSync sync)
+{
+    AutoCloseFD fd = openForWriteExcl(path, mode);
+
+    std::array<char, 64 * 1024> buf;
+
+    try {
+        while (true) {
+            try {
+                auto n = source.read(buf.data(), buf.size());
+                writeFull(fd.get(), {buf.data(), n});
+            } catch (EndOfFile &) {
+                break;
+            }
+        }
+    } catch (Error & e) {
+        e.addTrace({}, "writing file %1%", PathFmt(path));
+        throw;
+    }
+    if (sync == FsSync::Yes)
+        fd.fsync();
     fd.close();
     if (sync == FsSync::Yes)
         syncParent(path);
@@ -454,36 +499,93 @@ void AutoDelete::cancel() noexcept
     del = false;
 }
 
-std::filesystem::path createTempDir(const std::filesystem::path & tmpRoot, const std::string & prefix, mode_t mode)
-{
-    while (1) {
-        checkInterrupt();
-        std::filesystem::path tmpDir = makeTempPath(tmpRoot, prefix);
-        if (mkdir(
-                tmpDir.string().c_str()
-#ifndef _WIN32 // TODO abstract mkdir perms for Windows
-                    ,
-                mode
-#endif
-                )
-            == 0) {
+//////////////////////////////////////////////////////////////////////
+
 #ifdef __FreeBSD__
-            /* Explicitly set the group of the directory.  This is to
-               work around around problems caused by BSD's group
-               ownership semantics (directories inherit the group of
-               the parent).  For instance, the group of /tmp on
-               FreeBSD is "wheel", so all directories created in /tmp
-               will be owned by "wheel"; but if the user is not in
-               "wheel", then "tar" will fail to unpack archives that
-               have the setgid bit set on directories. */
-            if (::chown(tmpDir.c_str(), (uid_t) -1, getegid()) != 0)
-                throw SysError("setting group of directory %1%", PathFmt(tmpDir));
-#endif
-            return tmpDir;
-        }
-        if (errno != EEXIST)
-            throw SysError("creating directory %1%", PathFmt(tmpDir));
+AutoUnmount::AutoUnmount()
+    : del{false}
+{
+}
+
+AutoUnmount::AutoUnmount(const std::filesystem::path & p)
+    : path(p)
+    , del(true)
+{
+}
+
+AutoUnmount::~AutoUnmount()
+{
+    try {
+        unmount();
+    } catch (...) {
+        ignoreExceptionInDestructor();
     }
+}
+
+void AutoUnmount::cancel() noexcept
+{
+    del = false;
+}
+
+void AutoUnmount::unmount()
+{
+    if (del) {
+        if (::unmount(path.c_str(), 0) < 0) {
+            throw SysError("Failed to unmount path %1%", PathFmt(path));
+        }
+    }
+    cancel();
+}
+#endif
+
+//////////////////////////////////////////////////////////////////////
+
+std::filesystem::path defaultTempDir()
+{
+    return getEnvNonEmpty("TMPDIR").value_or("/tmp");
+}
+
+std::filesystem::path
+createTempSubdir(const std::filesystem::path & parent, const std::optional<std::string> & prefix, mode_t mode)
+{
+    checkInterrupt();
+    auto tmpRoot = canonPath(parent.string(), true);
+    std::filesystem::path tmpDir = makeTempPath(tmpRoot + "/", prefix);
+    if (mkdir(
+            tmpDir.string().c_str()
+#ifndef _WIN32 // TODO abstract mkdir perms for Windows
+                ,
+            mode
+#endif
+            )
+        == 0) {
+#ifdef __FreeBSD__
+        /* Explicitly set the group of the directory.  This is to
+           work around around problems caused by BSD's group
+           ownership semantics (directories inherit the group of
+           the parent).  For instance, the group of /tmp on
+           FreeBSD is "wheel", so all directories created in /tmp
+           will be owned by "wheel"; but if the user is not in
+           "wheel", then "tar" will fail to unpack archives that
+           have the setgid bit set on directories. */
+        if (::chown(tmpDir.c_str(), (uid_t) -1, getegid()) != 0)
+            throw SysError("setting group of directory '%1%'", PathFmt(tmpDir));
+#endif
+        return tmpDir;
+    }
+    throw SysError("creating directory '%1%'", PathFmt(tmpDir));
+}
+
+std::filesystem::path createTempDir(const std::optional<std::string> & prefix, mode_t mode)
+{
+    return createTempSubdir(defaultTempDir(), prefix, mode);
+}
+
+std::filesystem::path
+createTempDir(const std::filesystem::path & tmpRoot, const std::optional<std::string> & prefix, mode_t mode)
+{
+    auto root = tmpRoot.empty() ? defaultTempDir() : tmpRoot;
+    return createTempSubdir(root, prefix, mode);
 }
 
 AutoCloseFD createAnonymousTempFile()
@@ -491,7 +593,7 @@ AutoCloseFD createAnonymousTempFile()
     AutoCloseFD fd;
 
 #ifdef _WIN32
-    auto path = makeTempPath(defaultTempDir(), "nix-anonymous");
+    auto path = makeTempPath(defaultTempDir() / "", "nix-anonymous");
     fd = CreateFileW(
         path.c_str(),
         GENERIC_READ | GENERIC_WRITE,
@@ -551,13 +653,22 @@ std::pair<AutoCloseFD, std::filesystem::path> createTempFile(const std::filesyst
     return createTempFile(defaultTempDir(), prefix);
 }
 
-std::filesystem::path makeTempPath(const std::filesystem::path & root, const std::string & suffix)
+std::filesystem::path makeTempPath(const std::filesystem::path & root, const std::optional<std::string> & prefix)
 {
-    // start the counter at a random value to minimize issues with preexisting temp paths
-    static std::atomic<uint32_t> counter(std::random_device{}());
-    assert(!std::filesystem::path(suffix).is_absolute());
-    auto tmpRoot = canonPath(root.empty() ? defaultTempDir() : root, true);
-    return tmpRoot / fmt("%s-%s-%s", suffix, getpid(), counter.fetch_add(1, std::memory_order_relaxed));
+    auto tmpRoot = root.empty() ? defaultTempDir().string() + "/" : root.string();
+    static thread_local std::random_device generator{};
+    std::uniform_int_distribution<uint64_t> uniformDist{};
+    const uint64_t entropy[2] = {uniformDist(generator), uniformDist(generator)};
+    auto unique = BaseNix32::encode(std::as_bytes(std::span(entropy)));
+
+    if (prefix)
+        return fmt("%s%s-%s", tmpRoot, *prefix, unique);
+    return tmpRoot + unique;
+}
+
+std::filesystem::path makeTempSiblingPath(const std::filesystem::path & path)
+{
+    return makeTempPath(path.parent_path() / ".tmp-", std::nullopt);
 }
 
 void createSymlink(const std::filesystem::path & target, const std::filesystem::path & link)
@@ -570,27 +681,15 @@ void createSymlink(const std::filesystem::path & target, const std::filesystem::
 
 void replaceSymlink(const std::filesystem::path & target, const std::filesystem::path & link)
 {
-    for (unsigned int n = 0; true; n++) {
-        auto tmp = link.parent_path() / std::filesystem::path{fmt(".%d_%s", n, link.filename().string())};
-        tmp = tmp.lexically_normal();
+    auto tmp = makeTempSiblingPath(link);
+    createSymlink(target, tmp);
 
-        try {
-            std::filesystem::create_symlink(target, tmp);
-        } catch (std::filesystem::filesystem_error & e) {
-            if (e.code() == std::errc::file_exists)
-                continue;
-            throw SystemError(e.code(), "creating symlink %1% -> %2%", PathFmt(tmp), PathFmt(target));
-        }
-
-        try {
-            std::filesystem::rename(tmp, link);
-        } catch (std::filesystem::filesystem_error & e) {
-            if (e.code() == std::errc::file_exists)
-                continue;
-            throw SystemError(e.code(), "renaming %1% to %2%", PathFmt(tmp), PathFmt(link));
-        }
-
-        break;
+    std::error_code ec;
+    std::filesystem::rename(tmp, link, ec);
+    if (ec) {
+        std::error_code ignored;
+        std::filesystem::remove(tmp, ignored);
+        throw SysError(ec.value(), "renaming symlink %s to %s", PathFmt(tmp), PathFmt(link));
     }
 }
 

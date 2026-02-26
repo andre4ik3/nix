@@ -296,14 +296,7 @@ static void replaceValidPath(const std::filesystem::path & storePath, const std:
     std::filesystem::path oldPath;
 
     if (pathExists(storePath)) {
-        // why do we loop here?
-        // although makeTempPath should be unique, we can't
-        // guarantee that.
-        do {
-            oldPath = makeTempPath(storePath, ".old");
-            // store paths are often directories so we can't just unlink() it
-            // let's make sure the path doesn't exist before we try to use it
-        } while (pathExists(oldPath));
+        oldPath = makeTempSiblingPath(storePath);
         movePath(storePath, oldPath);
     }
     try {
@@ -411,7 +404,7 @@ std::optional<Descriptor> DerivationBuilderImpl::startBuild()
 
     /* Create a temporary directory where the build will take
        place. */
-    topTmpDir = createTempDir(buildDir, "nix", 0700);
+    topTmpDir = createTempSubdir(buildDir, std::nullopt, 0700);
     setBuildTmpDir();
     assert(!tmpDir.empty());
 
@@ -1295,8 +1288,8 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
         if (!fromPath || !toPath)
             return "(unable to resolve edge in output graph)";
 
-        Path fromHostPath = realPathInHost(store.printStorePath(*fromPath));
-        PosixSourceAccessor accessor{std::filesystem::path(fromHostPath)};
+        auto fromHostPath = realPathInHost(store.printStorePath(*fromPath));
+        PosixSourceAccessor accessor{std::move(fromHostPath)};
 
         std::optional<std::string> firstHit;
         scanForReferencesDeep(accessor, CanonPath::root, {*toPath}, [&](FileRefScanResult result) {
@@ -1420,7 +1413,7 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
         topoSortResult);
 
     OutputPathMap finalOutputs;
-    std::vector<std::pair<Path, std::optional<Path>>> nondeterministic;
+    std::vector<std::pair<std::filesystem::path, std::optional<std::filesystem::path>>> nondeterministic;
 
     for (auto & outputName : sortedOutputNames | std::views::reverse) {
         auto output = get(drv.outputs, outputName);
@@ -1677,7 +1670,7 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
         /* Calculate where we'll move the output files. In the checking case we
            will leave leave them where they are, for now, rather than move to
            their usual "final destination" */
-        auto finalDestPath = store.printStorePath(newInfo.path);
+        auto finalDestPath = store.toRealPath(newInfo.path);
 
         /* Lock final output path, if not already locked. This happens with
            floating CA derivations and hash-mismatching fixed-output
@@ -1685,7 +1678,7 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
         PathLocks dynamicOutputLock;
         dynamicOutputLock.setDeletion(true);
         auto optFixedPath = output->path(store, drv.name, outputName);
-        if (!optFixedPath || store.printStorePath(*optFixedPath) != finalDestPath) {
+        if (!optFixedPath || store.toRealPath(*optFixedPath) != finalDestPath) {
             assert(newInfo.ca);
 
             /* Don't wait on lock for the hash-mismatching fixed-output
@@ -1751,9 +1744,9 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
                                 tmpDir);
                         }
 
-                        nondeterministic.emplace_back(store.toRealPath(finalDestPath), dst);
+                        nondeterministic.emplace_back(finalDestPath, dst);
                     } else {
-                        nondeterministic.emplace_back(store.toRealPath(finalDestPath), std::nullopt);
+                        nondeterministic.emplace_back(finalDestPath, std::nullopt);
                     }
                 }
 
@@ -1822,9 +1815,10 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
                 fmt("derivation '%s' may not be deterministic: outputs differ", store.printStorePath(drvPath));
             for (auto & [oldPath, newPath] : nondeterministic) {
                 if (newPath)
-                    msg += fmt("\n  output differs: output '%s' differs from '%s'", oldPath, *newPath);
+                    msg +=
+                        fmt("\n  output differs: output %s differs from %s", PathFmt(oldPath), PathFmt(*newPath));
                 else
-                    msg += fmt("\n  output '%s' differs", oldPath);
+                    msg += fmt("\n  output %s differs", PathFmt(oldPath));
             }
             throw NotDeterministic("%s", msg);
         }

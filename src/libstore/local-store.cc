@@ -1551,7 +1551,7 @@ std::pair<std::filesystem::path, AutoCloseFD> LocalStore::createTempDirInStore()
            the GC between createTempDir() and when we acquire a lock on it.
            We'll repeat until 'tmpDir' exists and we've locked it.
            Make the directory accessible only to the current user. */
-        tmpDirFn = createTempDir(std::filesystem::path{config->realStoreDir.get()}, "tmp", /*mode=*/0700);
+        tmpDirFn = createTempSubdir(std::filesystem::path{config->realStoreDir.get()}, "tmp", /*mode=*/0700);
         tmpDirFd = openDirectory(tmpDirFn, FinalSymlink::DontFollow);
         if (!tmpDirFd) {
             continue;
@@ -1865,10 +1865,9 @@ void LocalStore::addBuildLog(const StorePath & drvPath, std::string_view log)
 
     createDirs(logPath.parent_path());
 
-    auto tmpFile = logPath;
-    tmpFile += ".tmp." + std::to_string(getpid());
+    auto tmpFile = makeTempSiblingPath(logPath);
 
-    writeFile(tmpFile, compress(CompressionAlgo::bzip2, log));
+    writeFileExcl(tmpFile, compress(CompressionAlgo::bzip2, log));
 
     std::filesystem::rename(tmpFile, logPath);
 }

@@ -3,8 +3,6 @@
 #include "nix/util/signals.hh"
 #include "nix/store/store-registration.hh"
 
-#include <atomic>
-
 namespace nix {
 
 static std::filesystem::path checkBinaryCachePath(const std::filesystem::path & root, const std::string & path)
@@ -77,12 +75,10 @@ protected:
         const std::string & path, RestartableSource & source, const std::string & mimeType, uint64_t sizeHint) override
     {
         auto path2 = checkBinaryCachePath(config->binaryCacheDir, path);
-        static std::atomic<int> counter{0};
         createDirs(path2.parent_path());
-        auto tmp = path2;
-        tmp += fmt(".tmp.%d.%d", getpid(), ++counter);
+        auto tmp = makeTempSiblingPath(path2);
         AutoDelete del(tmp, false);
-        writeFile(tmp, source); /* TODO: Don't follow symlinks? */
+        writeFileExcl(tmp, source);
         std::filesystem::rename(tmp, path2);
         del.cancel();
     }
