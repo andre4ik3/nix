@@ -594,8 +594,9 @@ ProcessLineResult NixRepl::processLine(std::string line)
         });
 
         /* If we had to open a temporary read-only file, there's no need to
-           reload (no files could have changed anyway). */
-        if (!fd) {
+           reload (no files could have changed anyway). Store paths are also
+           immutable, so editing them cannot change the evaluated files. */
+        if (!fd && !state->store->isInStore(path.resolveSymlinks().path.abs())) {
             state->resetFileCache();
             reloadFilesAndFlakes();
         }
