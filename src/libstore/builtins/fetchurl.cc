@@ -83,7 +83,7 @@ static void builtinFetchurl(const BuiltinBuilderContext & ctx)
                     + dof->ca.hash.to_string(HashFormat::Base16, false));
                 return;
             } catch (Error & e) {
-                debug(e.what());
+                debug("%1%", Uncolored(e.what()));
             }
 
     /* Otherwise try the specified URL. */

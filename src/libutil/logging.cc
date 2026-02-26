@@ -200,10 +200,13 @@ public:
 
     void result(ActivityId act, ResultType type, const Fields & fields) noexcept override
     {
-        if (type == resBuildLogLine && printBuildLogs)
-            printError(std::get<std::string>(fields[0].raw));
-        else if (type == resPostBuildLogLine && printBuildLogs)
-            printError("post-build-hook: " + std::get<std::string>(fields[0].raw));
+        if (type == resBuildLogLine && printBuildLogs) {
+            auto lastLine = std::get<std::string>(fields[0].raw);
+            printError("%1%", Uncolored(lastLine));
+        } else if (type == resPostBuildLogLine && printBuildLogs) {
+            auto lastLine = std::get<std::string>(fields[0].raw);
+            printError("post-build-hook: %1%", Uncolored(lastLine));
+        }
     }
 };
 
