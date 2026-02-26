@@ -8,6 +8,7 @@
   pkg-config,
 
   jq,
+  expect,
   git,
   mercurial,
   python3,
@@ -56,6 +57,7 @@ mkMesonDerivation (
       pkg-config
 
       jq
+      expect
       git
       mercurial
       # For the OpenTelemetry collector in `otel.sh`.
