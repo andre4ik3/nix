@@ -276,6 +276,33 @@ simple_path="$(nix-instantiate "$testDir/simple.nix")"
 # `PATH=` is a part of build log.
 testReplResponseNoRegex ":log ${simple_path}" "PATH="
 
+# Test that editing a store path does not reload.
+echo '{ identity = a: a; }' > repl-test.nix
+repl_test_store="$(nix-store --add repl-test.nix)"
+EDITOR=true testReplResponseNoRegex "
+a = ''test string that we'll grep later''
+:l $repl_test_store
+:e identity
+a
+" "test string that we'll grep later"
+
+# ...even through symlinks.
+ln -s "$repl_test_store" repl-test-link.nix
+EDITOR=true testReplResponseNoRegex "
+a = ''test string that we'll grep later''
+:l repl-test-link.nix
+:e identity
+a
+" "test string that we'll grep later"
+
+# Test that editing a local file does reload.
+EDITOR=true testReplResponseNoRegex "
+a = ''test string that we'll grep later''
+:l repl-test.nix
+:e identity
+a
+" "undefined variable"
+
 # TODO: move init to characterisation/framework.sh
 badDiff=0
 badExitCode=0
