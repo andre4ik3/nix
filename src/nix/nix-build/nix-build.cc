@@ -145,7 +145,7 @@ static void main_nix_build(int argc, char ** argv)
     std::filesystem::path script;
     std::vector<std::string> savedArgs;
 
-    AutoDelete tmpDir(createTempDir("", myName));
+    AutoDelete tmpDir(createTempDir(myName, 0755));
 
     std::string outLink = "./result";
 

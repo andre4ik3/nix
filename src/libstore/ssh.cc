@@ -84,10 +84,7 @@ SSHMaster::SSHMaster(
     , sshPublicHostKey(parsePublicHostKey(authority.host, sshPublicHostKey))
     , compress(compress)
     , logFD(logFD)
-    , tmpDir(
-          !this->sshPublicHostKey.empty()
-              ? std::make_shared<AutoDelete>(createTempDir("", "nix", 0700))
-              : nullptr)
+    , tmpDir(!this->sshPublicHostKey.empty() ? std::make_shared<AutoDelete>(createTempDir("nix", 0700)) : nullptr)
     , knownHostsFile([&]() -> std::optional<std::filesystem::path> {
         if (this->sshPublicHostKey.empty())
             return std::nullopt;

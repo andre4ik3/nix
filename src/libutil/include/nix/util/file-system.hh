@@ -261,12 +261,17 @@ void writeFile(
     FsSync sync = FsSync::No,
     FinalSymlink finalSymlink = FinalSymlink::Follow);
 
+void writeFileExcl(
+    const std::filesystem::path & path, std::string_view s, mode_t mode = 0666, FsSync sync = FsSync::No);
+
 void writeFile(
     const std::filesystem::path & path,
     Source & source,
     mode_t mode = 0666,
     FsSync sync = FsSync::No,
     FinalSymlink finalSymlink = FinalSymlink::Follow);
+
+void writeFileExcl(const std::filesystem::path & path, Source & source, mode_t mode = 0666, FsSync sync = FsSync::No);
 
 void writeFile(
     Descriptor fd, std::string_view s, FsSync sync = FsSync::No, const std::filesystem::path * origPath = nullptr);
@@ -435,8 +440,23 @@ typedef std::unique_ptr<DIR, Deleter<closedir>> AutoCloseDir;
 /**
  * Create a temporary directory.
  */
-std::filesystem::path
-createTempDir(const std::filesystem::path & tmpRoot = "", const std::string & prefix = "nix", mode_t mode = 0755);
+std::filesystem::path createTempDir(const std::optional<std::string> & prefix, mode_t mode = 0755);
+
+/**
+ * Create a temporary directory.
+ */
+std::filesystem::path createTempDir(
+    const std::filesystem::path & tmpRoot = "",
+    const std::optional<std::string> & prefix = std::string{"nix"},
+    mode_t mode = 0755);
+
+/**
+ * Create a temporary directory in the given parent directory.
+ */
+std::filesystem::path createTempSubdir(
+    const std::filesystem::path & parent,
+    const std::optional<std::string> & prefix = std::string{"nix"},
+    mode_t mode = 0755);
 
 /**
  * Create an anonymous readable/writable temporary file, returning a file handle.
@@ -469,12 +489,17 @@ std::filesystem::path defaultTempDir();
 bool isExecutableFileAmbient(const std::filesystem::path & exe);
 
 /**
- * Return temporary path constructed by appending a suffix to a root path.
+ * Return temporary path constructed by appending to a root path.
  *
- * The constructed path looks like `<root><suffix>-<pid>-<unique>`. To create a
- * path nested in a directory, provide a suffix starting with `/`.
+ * The constructed path looks like `<root>[<prefix>-]<unique>`.
  */
-std::filesystem::path makeTempPath(const std::filesystem::path & root, const std::string & suffix = ".tmp");
+std::filesystem::path
+makeTempPath(const std::filesystem::path & root, const std::optional<std::string> & prefix = std::string{".tmp"});
+
+/**
+ * Return temporary path in the same directory as a given path.
+ */
+std::filesystem::path makeTempSiblingPath(const std::filesystem::path & path);
 
 /**
  * Used in various places.
