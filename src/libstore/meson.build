@@ -167,6 +167,12 @@ endif
 nlohmann_json = dependency('nlohmann_json', version : '>= 3.9')
 deps_public += nlohmann_json
 
+toml11 = dependency(
+  'toml11',
+  version : '>= 4.0.0',
+)
+deps_other += toml11
+
 sqlite = dependency('sqlite3', 'sqlite', version : '>=3.6.19')
 deps_private += sqlite
 
