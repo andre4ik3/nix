@@ -420,7 +420,8 @@ nlohmann::json getFlakeInventory(
                     auto drvObj = nlohmann::json::object();
 
                     if (options.showDrvNames)
-                        drvObj.emplace("name", drv->getAttr(state.s.name)->getString());
+                        if (auto name = drv->maybeGetAttr(state.s.name))
+                            drvObj.emplace("name", name->getString());
 
                     if (options.showDrvPaths) {
                         auto drvPath = drv->forceDerivation();
