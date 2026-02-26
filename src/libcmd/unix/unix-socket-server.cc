@@ -15,6 +15,9 @@
 #include <sys/un.h>
 #include <poll.h>
 
+#include <algorithm>
+#include <cerrno>
+
 #if defined(__APPLE__) || defined(__FreeBSD__)
 #  include <sys/ucred.h>
 #endif
@@ -41,6 +44,24 @@ PeerInfo getPeerInfo(Descriptor remote)
         peer.gid = cred.gid;
     }
 
+#  if defined(SO_PEERGROUPS)
+    gid_t oneGroup = 0;
+    socklen_t groupsLen = sizeof(oneGroup);
+    if (getsockopt(remote, SOL_SOCKET, SO_PEERGROUPS, &oneGroup, &groupsLen) == 0) {
+        if (groupsLen == sizeof(gid_t))
+            peer.supplementaryGids.push_back(oneGroup);
+    } else if (errno == ERANGE && groupsLen > 0 && groupsLen % sizeof(gid_t) == 0) {
+        auto count = groupsLen / sizeof(gid_t);
+        peer.supplementaryGids.resize(count);
+        if (getsockopt(remote, SOL_SOCKET, SO_PEERGROUPS, peer.supplementaryGids.data(), &groupsLen) == 0
+            && groupsLen % sizeof(gid_t) == 0) {
+            peer.supplementaryGids.resize(groupsLen / sizeof(gid_t));
+        } else {
+            peer.supplementaryGids.clear();
+        }
+    }
+#  endif
+
 #elif defined(LOCAL_PEERCRED)
 
 #  if !defined(SOL_LOCAL)
@@ -52,6 +73,9 @@ PeerInfo getPeerInfo(Descriptor remote)
     if (getsockopt(remote, SOL_LOCAL, LOCAL_PEERCRED, &cred, &credLen) == 0) {
         peer.uid = cred.cr_uid;
         peer.gid = cred.cr_gid;
+        auto maxGroups = sizeof(cred.cr_groups) / sizeof(cred.cr_groups[0]);
+        auto nGroups = std::min(static_cast<size_t>(cred.cr_ngroups), maxGroups);
+        peer.supplementaryGids.insert(peer.supplementaryGids.end(), cred.cr_groups, cred.cr_groups + nGroups);
     }
 
 #  if defined(LOCAL_PEERPID)
