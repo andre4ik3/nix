@@ -38,6 +38,13 @@
 #  include "nix/util/cgroup.hh"
 #endif
 
+#if defined(__APPLE__) || defined(__FreeBSD__)
+#  include <sys/ucred.h>
+#endif
+#if defined(__APPLE__)
+#  include <membership.h>
+#endif
+
 namespace nix {
 
 /**
@@ -153,11 +160,23 @@ static void setSigChldAction(bool autoReap)
  *
  * @param group Group the user might be a member of.
  */
-static bool isUserInGroup(std::string_view user, const struct group & gr)
+static bool isUserInGroup(const std::string & user, const struct group & gr)
 {
     for (char ** mem = gr.gr_mem; *mem; mem++)
-        if (user == std::string_view(*mem))
+        if (user == *mem)
             return true;
+
+#if defined(__APPLE__)
+    if (auto pw = getpwnam(user.c_str())) {
+        uuid_t userUuid, groupUuid;
+        if (!mbr_uid_to_uuid(pw->pw_uid, userUuid) && !mbr_gid_to_uuid(gr.gr_gid, groupUuid)) {
+            int isMember = 0;
+            if (!mbr_check_membership(userUuid, groupUuid, &isMember))
+                return !!isMember;
+        }
+    }
+#endif
+
     return false;
 }
 
