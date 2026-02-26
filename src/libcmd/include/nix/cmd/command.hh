@@ -407,7 +407,7 @@ void completeFlakeRefWithFragment(
 std::string showVersions(const StringSet & versions);
 
 void printClosureDiff(
-    ref<Store> store, const StorePath & beforePath, const StorePath & afterPath, std::string_view indent);
+    ref<Store> store, const StorePath & beforePath, const StorePath & afterPath, bool json, std::string_view indent);
 
 /**
  * Create symlinks prefixed by `outLink` to the store paths in

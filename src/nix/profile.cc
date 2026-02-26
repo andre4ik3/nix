@@ -879,6 +879,7 @@ struct CmdProfileDiffClosures : virtual StoreCommand, MixDefaultProfile
                     store,
                     store->followLinksToStorePath(prevGen->path.string()),
                     store->followLinksToStorePath(gen.path.string()),
+                    false,
                     "  ");
             }
 

@@ -3,6 +3,7 @@
 #include "nix/store/store-api.hh"
 #include "nix/store/names.hh"
 
+#include <nlohmann/json.hpp>
 #include <regex>
 
 #include "nix/util/strings.hh"
@@ -16,10 +17,21 @@ struct Info
     std::string outputName;
 };
 
+struct DiffInfoForPackage
+{
+    int64_t sizeDelta;
+    StringSet addedVersions;
+    StringSet removedVersions;
+    bool showDelta;
+};
+
 } // namespace
 
 // name -> version -> store paths
 typedef std::map<std::string, std::map<std::string, std::map<StorePath, Info>>> GroupedPaths;
+typedef std::map<std::string, DiffInfoForPackage> DiffInfo;
+
+static constexpr std::string_view CLOSURE_DIFF_SCHEMA_VERSION = "lix-closure-diff-v1";
 
 GroupedPaths getClosureInfo(ref<Store> store, const StorePath & toplevel)
 {
@@ -61,7 +73,7 @@ std::string showVersions(const StringSet & versions)
 }
 
 void printClosureDiff(
-    ref<Store> store, const StorePath & beforePath, const StorePath & afterPath, std::string_view indent)
+    ref<Store> store, const StorePath & beforePath, const StorePath & afterPath, bool json, std::string_view indent)
 {
     auto beforeClosure = getClosureInfo(store, beforePath);
     auto afterClosure = getClosureInfo(store, afterPath);
@@ -71,6 +83,8 @@ void printClosureDiff(
         allNames.insert(name);
     for (auto & [name, _] : afterClosure)
         allNames.insert(name);
+
+    DiffInfo diff;
 
     for (auto & name : allNames) {
         auto & beforeVersions = beforeClosure[name];
@@ -101,23 +115,53 @@ void printClosureDiff(
             if (!beforeVersions.count(version))
                 added.insert(version);
 
-        if (showDelta || !removed.empty() || !added.empty()) {
-            std::vector<std::string> items;
-            if (!removed.empty() && !added.empty()) {
-                items.push_back(fmt("%s → %s", showVersions(removed), showVersions(added)));
-            } else if (!removed.empty()) {
-                items.push_back(fmt("%s removed", showVersions(removed)));
-            } else if (!added.empty()) {
-                items.push_back(fmt("%s added", showVersions(added)));
-            }
-            if (showDelta)
-                items.push_back(fmt("%s%s" ANSI_NORMAL, sizeDelta > 0 ? ANSI_RED : ANSI_GREEN, renderSize(sizeDelta)));
-            logger->cout("%s%s: %s", indent, name, concatStringsSep(", ", items));
+        if (showDelta || !removed.empty() || !added.empty())
+            diff.emplace(
+                name,
+                DiffInfoForPackage{
+                    .sizeDelta = sizeDelta,
+                    .addedVersions = std::move(added),
+                    .removedVersions = std::move(removed),
+                    .showDelta = showDelta,
+                });
+    }
+
+    if (json) {
+        nlohmann::json out = nlohmann::json::object();
+        nlohmann::json packages = nlohmann::json::object();
+        for (const auto & [name, item] : diff) {
+            if (item.removedVersions.empty() && item.addedVersions.empty())
+                continue;
+
+            nlohmann::json package = nlohmann::json::object();
+            package["sizeDelta"] = item.sizeDelta;
+            package["versionsBefore"] = item.removedVersions;
+            package["versionsAfter"] = item.addedVersions;
+            packages[name] = std::move(package);
         }
+        out["schema"] = CLOSURE_DIFF_SCHEMA_VERSION;
+        out["packages"] = std::move(packages);
+        logger->cout("%s", out.dump());
+        return;
+    }
+
+    for (const auto & [name, item] : diff) {
+        std::vector<std::string> items;
+        if (!item.removedVersions.empty() && !item.addedVersions.empty()) {
+            items.push_back(fmt("%s → %s", showVersions(item.removedVersions), showVersions(item.addedVersions)));
+        } else if (!item.removedVersions.empty()) {
+            items.push_back(fmt("%s removed", showVersions(item.removedVersions)));
+        } else if (!item.addedVersions.empty()) {
+            items.push_back(fmt("%s added", showVersions(item.addedVersions)));
+        }
+        if (item.showDelta)
+            items.push_back(
+                fmt("%s%s" ANSI_NORMAL, item.sizeDelta > 0 ? ANSI_RED : ANSI_GREEN, renderSize(item.sizeDelta)));
+        logger->cout("%s%s: %s", indent, name, concatStringsSep(", ", items));
     }
 }
 
-struct CmdDiffClosures : SourceExprCommand, MixOperateOnOptions
+struct CmdDiffClosures : SourceExprCommand, MixJSON, MixOperateOnOptions
 {
     std::string _before, _after;
 
@@ -145,7 +189,7 @@ struct CmdDiffClosures : SourceExprCommand, MixOperateOnOptions
         auto beforePath = Installable::toStorePath(getEvalStore(), store, Realise::Outputs, operateOn, before);
         auto after = parseInstallable(store, _after);
         auto afterPath = Installable::toStorePath(getEvalStore(), store, Realise::Outputs, operateOn, after);
-        printClosureDiff(store, beforePath, afterPath, "");
+        printClosureDiff(store, beforePath, afterPath, json, "");
     }
 };
 
