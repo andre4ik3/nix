@@ -96,7 +96,7 @@ bool PathLocks::lockPaths(const std::set<std::filesystem::path> & paths, const s
             if (!lockFile(fd.get(), ltWrite, false)) {
                 if (wait) {
                     if (waitMsg != "")
-                        printError(waitMsg);
+                        printError("%1%", Uncolored(waitMsg));
                     lockFile(fd.get(), ltWrite, true);
                 } else {
                     /* Failed to lock this path; release all other
@@ -148,7 +148,7 @@ FdLock::FdLock(Descriptor desc, LockType lockType, bool wait, std::string_view w
 {
     if (wait) {
         if (!lockFile(desc, lockType, false)) {
-            printInfo("%s", waitMsg);
+            printInfo("%s", Uncolored(waitMsg));
             acquired = lockFile(desc, lockType, true);
         }
     } else
