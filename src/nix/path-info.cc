@@ -180,6 +180,51 @@ struct CmdPathInfo : StorePathsCommand, MixJSON
             str << fmt("\t%11d", value);
     }
 
+    void run(ref<Store> store, Installables && installables) override
+    {
+        StorePathSet storePaths;
+
+        if (all) {
+            if (installables.size())
+                throw UsageError("'--all' does not expect arguments");
+
+            storePaths = store->queryAllValidPaths();
+        } else {
+            if (operateOn == OperateOn::Output) {
+                for (auto & installable : installables) {
+                    for (auto & derived : installable->toDerivedPaths()) {
+                        std::visit(
+                            overloaded{
+                                [&](const DerivedPath::Built & bfd) {
+                                    auto outputs = resolveDerivedPath(*store, bfd, &*getEvalStore());
+                                    for (auto & [_, output] : outputs)
+                                        storePaths.insert(output);
+                                },
+                                [&](const DerivedPath::Opaque & bo) { storePaths.insert(bo.path); },
+                            },
+                            derived.path.raw());
+                    }
+                }
+            } else {
+                auto drvPaths = Installable::toDerivations(store, installables, true);
+                storePaths.insert(drvPaths.begin(), drvPaths.end());
+            }
+
+            if (recursive) {
+                // XXX: This only computes the store path closure, ignoring
+                // intermediate realisations.
+                StorePathSet closure;
+                store->computeFSClosure(storePaths, closure);
+                storePaths.insert(closure.begin(), closure.end());
+            }
+        }
+
+        auto sorted = store->topoSortPaths(storePaths);
+        std::reverse(sorted.begin(), sorted.end());
+
+        run(store, std::move(sorted));
+    }
+
     void run(ref<Store> store, StorePaths && storePaths) override
     {
         size_t pathLen = 0;
