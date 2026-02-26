@@ -331,7 +331,7 @@ TEST(Config, applyConfigInvalidThrows)
 TEST(Config, applyConfigPathSettingRelativeAndHomePaths)
 {
     Config config;
-    PathSetting setting{&config, "/default.nix", "path-setting", "path setting"};
+    Setting<AbsolutePath> setting{&config, "/default.nix", "path-setting", "path setting"};
 
     config.applyConfig(
         "path-setting = ./doggy.nix",
@@ -339,7 +339,7 @@ TEST(Config, applyConfigPathSettingRelativeAndHomePaths)
             .path = "/tmp/puppy/config/nix.conf",
             .home = "/home/puppy",
         });
-    ASSERT_EQ(setting.get(), "/tmp/puppy/config/doggy.nix");
+    ASSERT_EQ(setting.get(), AbsolutePath{"/tmp/puppy/config/doggy.nix"});
 
     config.applyConfig(
         "path-setting = ~/.config/nix/repl.nix",
@@ -347,7 +347,7 @@ TEST(Config, applyConfigPathSettingRelativeAndHomePaths)
             .path = "/tmp/puppy/config/nix.conf",
             .home = "/home/puppy",
         });
-    ASSERT_EQ(setting.get(), "/home/puppy/.config/nix/repl.nix");
+    ASSERT_EQ(setting.get(), AbsolutePath{"/home/puppy/.config/nix/repl.nix"});
 }
 
 TEST(Config, applyConfigPathsSettingRelativeAndHomePaths)
@@ -368,7 +368,7 @@ TEST(Config, applyConfigPathsSettingRelativeAndHomePaths)
 TEST(Config, applyConfigIncludeResolvesRelativePathsFromIncludedFile)
 {
     Config config;
-    PathSetting setting{&config, "/default.nix", "path-setting", "path setting"};
+    Setting<AbsolutePath> setting{&config, "/default.nix", "path-setting", "path setting"};
 
     auto tmpDir = createTempDir();
     AutoDelete delTmpDir(tmpDir, true);
@@ -382,6 +382,6 @@ TEST(Config, applyConfigIncludeResolvesRelativePathsFromIncludedFile)
             .home = tmpDir.string(),
         });
 
-    ASSERT_EQ(setting.get(), (tmpDir / ".config" / "overlay.nix").string());
+    ASSERT_EQ(setting.get(), AbsolutePath{tmpDir / ".config" / "overlay.nix"});
 }
 } // namespace nix

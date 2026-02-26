@@ -95,7 +95,7 @@ absPath(const std::filesystem::path & path0, const std::filesystem::path * dir, 
     return canonPath(path, resolveSymlinks);
 }
 
-Path tildePath(PathView path, const std::optional<PathView> & home)
+std::filesystem::path tildePath(PathView path, const std::optional<PathView> & home)
 {
     if (path.starts_with("~/")) {
         if (!home)
@@ -540,9 +540,15 @@ void AutoUnmount::unmount()
 
 //////////////////////////////////////////////////////////////////////
 
-std::filesystem::path defaultTempDir()
+std::function<std::optional<std::filesystem::path>()> & detail::defaultTempDirProvider()
 {
-    return getEnvNonEmpty("TMPDIR").value_or("/tmp");
+    static std::function<std::optional<std::filesystem::path>()> provider;
+    return provider;
+}
+
+void setDefaultTempDirProvider(std::function<std::optional<std::filesystem::path>()> provider)
+{
+    detail::defaultTempDirProvider() = std::move(provider);
 }
 
 std::filesystem::path

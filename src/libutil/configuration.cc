@@ -112,7 +112,7 @@ struct ParsedConfigLine
 
 static std::string displayConfigSource(const ApplyConfigOptions & options)
 {
-    return options.path.value_or("<unknown>");
+    return options.path ? options.path->string() : "<unknown>";
 }
 
 static void parseConfigFiles(
@@ -151,7 +151,8 @@ static void parseConfigFiles(
                     "syntax error in configuration line '%1%' in '%2%'", line, displayConfigSource(options));
             if (!options.path)
                 throw UsageError("can only include configuration '%1%' from files", tokens[1]);
-            auto p = absPath(tildePath(tokens[1], options.home), dirOf(*options.path));
+            auto dir = options.path->parent_path();
+            auto p = absPath(tildePath(tokens[1], options.home), &dir);
             if (pathExists(p)) {
                 try {
                     std::string includedContents = readFile(p);
@@ -166,7 +167,7 @@ static void parseConfigFiles(
                     // TODO: Do we actually want to ignore this? Or is it better to fail?
                 }
             } else if (!ignoreMissing)
-                throw Error("file '%1%' included from '%2%' not found", p, *options.path);
+                throw Error("file '%1%' included from '%2%' not found", PathFmt(p), PathFmt(*options.path));
             continue;
         }
 
@@ -191,7 +192,8 @@ void AbstractConfig::applyConfig(const std::string & contents, const std::string
     applyConfig(
         contents,
         ApplyConfigOptions{
-            .path = path == "<unknown>" ? std::optional<Path>{} : std::optional<Path>{path},
+            .path = path == "<unknown>" ? std::optional<std::filesystem::path>{}
+                                        : std::optional<std::filesystem::path>{path},
         });
 }
 
@@ -541,8 +543,25 @@ static AbsolutePath parseAbsolutePath(const AbstractSetting & s, const std::stri
 
     auto tildeResolvedPath = tildePath(str, currentApplyConfigOptions ? currentApplyConfigOptions->home : std::nullopt);
 
-    if (currentApplyConfigOptions && currentApplyConfigOptions->path)
-        return absPath(tildeResolvedPath, dirOf(*currentApplyConfigOptions->path));
+    if (currentApplyConfigOptions && currentApplyConfigOptions->path) {
+        auto dir = currentApplyConfigOptions->path->parent_path();
+        return absPath(tildeResolvedPath, &dir);
+    }
+
+    return canonPath(tildeResolvedPath);
+}
+
+static std::filesystem::path parseConfigPath(const AbstractSetting & s, const std::string & str)
+{
+    if (str == "")
+        throw UsageError("setting '%s' is a path and paths cannot be empty", s.name);
+
+    auto tildeResolvedPath = tildePath(str, currentApplyConfigOptions ? currentApplyConfigOptions->home : std::nullopt);
+
+    if (currentApplyConfigOptions && currentApplyConfigOptions->path) {
+        auto dir = currentApplyConfigOptions->path->parent_path();
+        return absPath(tildeResolvedPath, &dir);
+    }
 
     return canonPath(tildeResolvedPath);
 }
@@ -621,7 +640,7 @@ Paths PathsSetting::parse(const std::string & str) const
 {
     Paths result;
     for (const auto & token : tokenizeString<Strings>(str))
-        result.push_back(parseAbsolutePath(*this, token));
+        result.push_back(parseConfigPath(*this, token));
     return result;
 }
 

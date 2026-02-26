@@ -75,7 +75,19 @@ std::filesystem::path descriptorToPath(Descriptor fd)
 
 std::filesystem::path defaultTempDir()
 {
-    return getEnvOsNonEmpty("TMPDIR").value_or("/tmp");
+    auto & provider = detail::defaultTempDirProvider();
+    if (provider) {
+        if (auto configured = provider())
+            return *configured;
+    }
+
+    auto envTempDir = getEnvOsNonEmpty(OS_STR("TMPDIR"))
+                          .transform([](auto && value) { return std::filesystem::path(std::move(value)); });
+#ifdef __APPLE__
+    if (envTempDir && hasPrefix(envTempDir->string(), "/var/folders/"))
+        envTempDir = std::nullopt;
+#endif
+    return envTempDir.value_or("/tmp");
 }
 
 PosixStat lstat(const std::filesystem::path & path)

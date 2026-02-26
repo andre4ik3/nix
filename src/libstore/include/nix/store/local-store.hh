@@ -50,7 +50,8 @@ private:
         R"(
             The directory on the host, in which derivations' temporary build directories are created.
 
-            If not set, Nix will use the `builds` subdirectory of its configured state directory.
+            If not set, Nix will use the global [`temp-dir`](@docroot@/command-ref/conf-file.md#conf-temp-dir) if set,
+            otherwise the `builds` subdirectory of its configured state directory.
 
             Note that builds are often performed by the Nix daemon, so its `build-dir` applies.
 

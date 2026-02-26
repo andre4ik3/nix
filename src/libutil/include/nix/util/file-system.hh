@@ -70,7 +70,7 @@ absPath(const std::filesystem::path & path, const std::filesystem::path * dir = 
  *
  * Paths starting with `~` but not `~/` are always rejected.
  */
-Path tildePath(PathView path, const std::optional<PathView> & home = std::nullopt);
+std::filesystem::path tildePath(PathView path, const std::optional<PathView> & home = std::nullopt);
 
 /**
  * Canonicalise a path by removing all `.` or `..` components and
@@ -475,12 +475,22 @@ createTempFile(const std::filesystem::path & root, const std::filesystem::path &
  */
 std::pair<AutoCloseFD, std::filesystem::path> createTempFile(const std::filesystem::path & prefix = "nix");
 
+namespace detail {
+std::function<std::optional<std::filesystem::path>()> & defaultTempDirProvider();
+}
+
 /**
  * Return `TMPDIR`, or the default temporary directory if unset or empty.
  * Uses GetTempPathW on windows which respects TMP, TEMP, USERPROFILE env variables.
  * Does not resolve symlinks and the returned path might not be directory or exist at all.
  */
 std::filesystem::path defaultTempDir();
+
+/**
+ * Set an optional callback used by `defaultTempDir()` to resolve a configured
+ * temporary directory before consulting `TMPDIR`.
+ */
+void setDefaultTempDirProvider(std::function<std::optional<std::filesystem::path>()> provider);
 
 /**
  * Interpret `exe` as a location in the ambient file system and return
