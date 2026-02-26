@@ -26,7 +26,7 @@ For each package name in the two closures (where a package name is
 defined as the name component of a store path excluding the version),
 if there is a change in the set of versions of the package, or a
 change in the size of the store paths of more than 8 KiB, it prints a
-line like this:
+line like this by default:
 
 ```console
 dolphin: 20.08.1 → 20.08.2, +13.9 KiB
@@ -47,5 +47,25 @@ libfoo: 1.2, 1.3 → 1.4
 
 leaves open the possibility that there are other versions (e.g. `1.1`)
 that exist in both closures.
+
+With `--json`, the output is machine-readable JSON with a `schema`
+field and a `packages` object keyed by package name.
+
+```json
+{
+  "schema": "lix-closure-diff-v1",
+  "packages": {
+    "dolphin": {
+      "sizeDelta": 14234,
+      "versionsBefore": [
+        "20.08.1"
+      ],
+      "versionsAfter": [
+        "20.08.2"
+      ]
+    }
+  }
+}
+```
 
 )""
