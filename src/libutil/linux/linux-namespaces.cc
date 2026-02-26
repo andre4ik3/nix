@@ -41,7 +41,7 @@ bool userNamespacesSupported()
                (or something else is really wrong). */
             assert(statusOk(r));
         } catch (SysError & e) {
-            debug("user namespaces do not work on this system: %s", e.msg());
+            debug("user namespaces do not work on this system: %s", Uncolored(e.msg()));
             return false;
         }
 
@@ -78,7 +78,7 @@ bool mountAndPidNamespacesSupported()
             }
 
         } catch (SysError & e) {
-            debug("mount namespaces do not work on this system: %s", e.msg());
+            debug("mount namespaces do not work on this system: %s", Uncolored(e.msg()));
             return false;
         }
 
@@ -198,7 +198,7 @@ void restoreMountNamespace()
         /* Do not reset havePrivateMountNs! This code can run in a vfork-ed child and we absolutely
            must not trample any of the parent's state. */
     } catch (Error & e) {
-        debug(e.msg());
+        debug("%1%", Uncolored(e.msg()));
     }
 }
 
