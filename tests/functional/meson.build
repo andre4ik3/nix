@@ -169,6 +169,7 @@ suites = [
       'signing.sh',
       'simple.sh',
       'ssh-relay.sh',
+      'store-delete-unlink.sh',
       'store-info.sh',
       'store-print-env.sh',
       'structured-attrs.sh',
