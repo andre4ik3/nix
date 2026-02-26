@@ -273,9 +273,14 @@ void RootArgs::parseCmdline(const Strings & _cmdline, bool allowShebang)
     Strings cmdline(_cmdline);
 
     if (auto s = getEnv("NIX_GET_COMPLETIONS")) {
-        size_t n = std::stoi(*s);
-        if (n < 1 || n > cmdline.size())
-            throw UsageError("NIX_GET_COMPLETIONS must be between 1 and the number of arguments");
+        size_t n = [&] {
+            if (auto parsed = string2Int<size_t>(*s))
+                return *parsed;
+            throw UsageError("Invalid value for environment variable NIX_GET_COMPLETIONS: %s", *s);
+        }();
+        if (!(n > 0 && n <= cmdline.size()))
+            throw UsageError(
+                "Invalid word number to get completion for: %zu\n. Your autocompletions might be misconfigured", n);
         *std::next(cmdline.begin(), n - 1) += completionMarker;
         completions = std::make_shared<Completions>();
         verbosity = lvlError;
