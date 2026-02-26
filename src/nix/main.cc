@@ -653,31 +653,6 @@ void mainWrapped(int argc, char ** argv)
         return;
     }
 
-    Finally printCompletions([&]() {
-        /* Don't let a failure to print completions (e.g. EPIPE because
-           the shell closed its end of the pipe) propagate, since this
-           may run while another exception is being unwound. */
-        try {
-            if (args.completions) {
-                switch (args.completions->type) {
-                case Completions::Type::Normal:
-                    logger->cout("normal");
-                    break;
-                case Completions::Type::Filenames:
-                    logger->cout("filenames");
-                    break;
-                case Completions::Type::Attrs:
-                    logger->cout("attrs");
-                    break;
-                }
-                for (auto & s : args.completions->completions)
-                    logger->cout(s.completion + "\t" + trim(s.description));
-            }
-        } catch (...) {
-            ignoreExceptionInDestructor();
-        }
-    });
-
     if (getEnv("NIX_GET_COMPLETIONS"))
         /* Avoid fetching stuff during tab completion. We have to this
            early because we haven't checked `haveInternet()` yet
@@ -697,6 +672,23 @@ void mainWrapped(int argc, char ** argv)
 
     printTalkative("Nix %s", version());
 
+    if (args.completions) {
+        switch (args.completions->type) {
+        case Completions::Type::Normal:
+            logger->cout("normal");
+            break;
+        case Completions::Type::Filenames:
+            logger->cout("filenames");
+            break;
+        case Completions::Type::Attrs:
+            logger->cout("attrs");
+            break;
+        }
+        for (auto & s : args.completions->completions)
+            logger->cout(s.completion + "\t" + trim(s.description));
+        return;
+    }
+
     std::vector<std::string> subcommand;
     MultiCommand * command = &args;
     while (command) {
@@ -711,9 +703,6 @@ void mainWrapped(int argc, char ** argv)
         showHelp(subcommand, args);
         return;
     }
-
-    if (args.completions)
-        return;
 
     if (args.showVersion) {
         printVersion(programName);
