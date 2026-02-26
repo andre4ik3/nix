@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstring>
+#include <unordered_set>
 #include <variant>
 
 #include <unistd.h>
@@ -74,6 +75,11 @@ struct AuthorizationSettings : Config
           You can also specify group names and/or numeric GIDs by prefixing names with `@`.
           For instance, `@wheel` means all users in the `wheel` group.
 
+          Both primary and supplementary groups (when supported by the platform)
+          are considered when determining membership. Also, groups a user belongs
+          to in the user database (for example LDAP, if configured) are taken
+          into account.
+
           > **Warning**
           >
           > Adding a user to `trusted-users` is essentially equivalent to giving that user root access to the system.
@@ -94,6 +100,11 @@ struct AuthorizationSettings : Config
           You can specify group names and/or numeric GIDs by prefixing names with `@`.
           For instance, `@wheel` means all users in the `wheel` group.
           Also, you can allow all users by specifying `*`.
+
+          Both primary and supplementary groups (when supported by the platform)
+          are considered when determining membership. Also, groups a user belongs
+          to in the user database (for example LDAP, if configured) are taken
+          into account.
 
           > **Note**
           >
@@ -181,55 +192,51 @@ static bool isUserInGroup(const std::string & user, const struct group & gr)
 }
 
 /**
- * Does the given user (specified by user name and primary group name)
+ * Does the given user (specified by user name and known group names)
  * match the given user/group whitelist?
  *
  * If the list allows all users: Yes.
  *
  * If the username is in the set: Yes.
  *
- * If the groupname is in the set: Yes.
- *
  * If the user is in another group which is in the set: yes.
+ * If the groups intersect with the set: Yes.
  *
  * Otherwise: No.
  */
-static bool matchUser(std::optional<uid_t> uid, std::optional<gid_t> gid, const Strings & users)
+static bool matchUser(
+    std::optional<uid_t> uid,
+    const std::optional<std::string> & userName,
+    const std::unordered_set<std::string> & groups,
+    const Strings & users)
 {
     if (find(users.begin(), users.end(), "*") != users.end())
         return true;
 
-    if (!uid)
-        return false;
-
-    if (find(users.begin(), users.end(), std::to_string(uid.value())) != users.end())
+    if (uid && find(users.begin(), users.end(), std::to_string(uid.value())) != users.end())
         return true;
 
-    auto pw = getpwuid(uid.value());
+    if (userName && find(users.begin(), users.end(), *userName) != users.end())
+        return true;
 
-    if (pw) {
-        if (find(users.begin(), users.end(), pw->pw_name) != users.end())
-            return true;
+    for (auto & i : users)
+        if (i.substr(0, 1) == "@") {
+            auto allowedGroup = i.substr(1);
+            if (groups.contains(allowedGroup))
+                return true;
 
-        if (gid) {
-            auto gr = getgrgid(gid.value());
-            for (auto & i : users)
-                if (i.substr(0, 1) == "@") {
-                    /* Check if the client's primary group matches. */
-                    if (gr && gr->gr_name == i.substr(1))
-                        return true;
-                    if (std::to_string(gid.value()) == i.substr(1))
-                        return true;
-                    /* Otherwise, check if the client's uid is a
-                       member of this group. */
-                    auto gr2 = getgrnam(i.c_str() + 1);
-                    if (!gr2)
-                        continue;
-                    if (isUserInGroup(pw->pw_name, *gr2))
-                        return true;
-                }
+            if (!userName)
+                continue;
+
+            /* Check if the user is a member of this group according to the
+               user/group database (for example LDAP), even if that group was
+               not present in the peer's communicated group list. */
+            auto gr = getgrnam(allowedGroup.c_str());
+            if (!gr)
+                continue;
+            if (isUserInGroup(*userName, *gr))
+                return true;
         }
-    }
 
     return false;
 }
@@ -250,23 +257,40 @@ static std::pair<TrustedFlag, std::optional<std::string>> authPeer(const unix::P
     TrustedFlag trusted = NotTrusted;
 
     auto pw = peer.uid ? getpwuid(*peer.uid) : nullptr;
-    auto user = pw         ? std::optional<std::string>(pw->pw_name)
-                : peer.uid ? std::optional(std::to_string(*peer.uid))
-                           : std::nullopt;
+    auto userName = pw ? std::optional<std::string>(pw->pw_name) : std::nullopt;
+    auto user = userName ? userName : peer.uid ? std::optional(std::to_string(*peer.uid)) : std::nullopt;
 
-    auto gr = peer.gid ? getgrgid(*peer.gid) : nullptr;
-    auto group = gr         ? std::optional<std::string>(gr->gr_name)
-                 : peer.gid ? std::optional(std::to_string(*peer.gid))
-                            : std::nullopt;
+    std::unordered_set<std::string> groups;
+    auto addGroup = [&](gid_t gid) {
+        auto gr = getgrgid(gid);
+        auto groupName = gr ? std::string(gr->gr_name) : std::to_string(gid);
+        auto gidString = std::to_string(gid);
+
+        if (groupName == settings.getLocalSettings().buildUsersGroup
+            || gidString == settings.getLocalSettings().buildUsersGroup) {
+            throw Error(
+                "the user '%1%' is not allowed to connect to the Nix daemon as its group is '%2%', "
+                "which is the group of users running the sandboxed builds.",
+                user.value_or("<unknown>"),
+                groupName);
+        }
+
+        groups.insert(std::move(groupName));
+        groups.insert(std::move(gidString));
+    };
+
+    if (peer.gid)
+        addGroup(*peer.gid);
+    for (const auto suppGid : peer.supplementaryGids)
+        addGroup(suppGid);
 
     const Strings & trustedUsers = authorizationSettings.trustedUsers;
     const Strings & allowedUsers = authorizationSettings.allowedUsers;
 
-    if (matchUser(peer.uid, peer.gid, trustedUsers))
+    if (matchUser(peer.uid, userName, groups, trustedUsers))
         trusted = Trusted;
 
-    if ((!trusted && !matchUser(peer.uid, peer.gid, allowedUsers))
-        || group == settings.getLocalSettings().buildUsersGroup)
+    if ((!trusted && !matchUser(peer.uid, userName, groups, allowedUsers)))
         throw Error("user '%1%' is not allowed to connect to the Nix daemon", user.value_or("<unknown>"));
 
     return {trusted, std::move(user)};
