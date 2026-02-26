@@ -165,7 +165,9 @@ public:
             while (state->active) {
                 if (!state->haveUpdate)
                     state.wait_for(updateCV, nextWakeup);
-                nextWakeup = draw(*state, {});
+                if (!state->isPaused() && printMultiline)
+                    eraseProgressDisplay(*state);
+                nextWakeup = restoreProgressDisplay(*state);
                 state.wait_for(quitCV, std::chrono::milliseconds(50));
             }
         });
@@ -182,8 +184,9 @@ public:
         {
             auto state(state_.lock());
             if (state->active) {
+                eraseProgressDisplay(*state);
+                state->lastLines = 0;
                 state->active = false;
-                clearProgressDisplay();
                 unhideCursorIfNeeded();
                 updateCV.notify_one();
                 quitCV.notify_one();
@@ -203,7 +206,8 @@ public:
         }
 
         if (state->active) {
-            clearProgressDisplay();
+            eraseProgressDisplay(*state);
+            state->lastLines = 0;
             /* Show activities that were previously only shown on the
                progress bar. Otherwise the user won't know what's
                happening. */
@@ -223,10 +227,8 @@ public:
             state->suspensions--;
         }
         if (state->suspensions == 0) {
-            if (state->active) {
-                clearProgressDisplay();
+            if (state->active)
                 hideCursorIfNeeded();
-            }
             state->haveUpdate = true;
             updateCV.notify_one();
         }
@@ -257,12 +259,10 @@ public:
 
     void log(State & state, Verbosity lvl, std::string_view s) noexcept
     {
-        if (state.active) {
-            invalidateRedrawCache();
-            draw(state, s);
-        } else {
-            writeToStderr(filterANSIEscapes(s, !isTTY) + "\n");
-        }
+        if (state.active && !state.isPaused())
+            eraseProgressDisplay(state);
+        writeToStderr(filterANSIEscapes(std::string(s) + ANSI_NORMAL "\n", !isTTY));
+        restoreProgressDisplay(state);
     }
 
     void logActivity(State & state, Verbosity lvl, ActInfo & act) noexcept
@@ -476,34 +476,33 @@ public:
         *lastOutput_.lock() = "";
     }
 
-    void clearProgressDisplay()
+    void eraseProgressDisplay(State & state) noexcept
     {
+        if (printMultiline && (state.lastLines >= 1)) {
+            // FIXME: make sure this works on windows
+            writeToStderr(fmt("\e[G\e[%dF\e[J", state.lastLines));
+        } else {
+            writeToStderr("\r\e[K");
+        }
         invalidateRedrawCache();
-        writeToStderr("\r\e[K");
     }
 
-    std::chrono::milliseconds draw(State & state, const std::optional<std::string_view> & s) noexcept
+    std::chrono::milliseconds restoreProgressDisplay(State & state) noexcept
     {
         auto nextWakeup = std::chrono::milliseconds::max();
 
         state.haveUpdate = false;
-        if (state.isPaused() || !state.active)
+        if (state.isPaused() || !state.active) {
+            state.lastLines = 0;
             return nextWakeup;
+        }
 
         auto windowSize = getWindowSize();
         auto width = windowSize.second;
         if (width <= 0)
             width = std::numeric_limits<decltype(width)>::max();
 
-        if (printMultiline && (state.lastLines >= 1)) {
-            // FIXME: make sure this works on windows
-            writeToStderr(fmt("\e[G\e[%dF\e[J", state.lastLines));
-        }
-
         state.lastLines = 0;
-
-        if (s != std::nullopt)
-            writeToStderr("\r\e[K" + filterANSIEscapes(s.value(), !isTTY) + ANSI_NORMAL "\n");
 
         std::string line;
         std::string status = getStatus(state);
@@ -568,7 +567,9 @@ public:
             if (!status.empty())
                 line += " ";
             line += activityLine;
-            redraw("\r" + filterANSIEscapes(line, false, width) + ANSI_NORMAL + "\e[K");
+            // Keep the cursor at the start of the line so non-logger stderr
+            // output (e.g. GC warnings) doesn't get appended into the bar text.
+            redraw("\r" + filterANSIEscapes(line, false, width) + ANSI_NORMAL + "\e[K\r");
         }
 
         return nextWakeup;
@@ -748,29 +749,25 @@ public:
     void writeToStdout(std::string_view s) override
     {
         auto state(state_.lock());
-        if (state->active) {
-            invalidateRedrawCache();
-            std::cerr << "\r\e[K";
-            Logger::writeToStdout(s);
-            draw(*state, {});
-        } else {
-            Logger::writeToStdout(s);
-        }
+        if (state->active && !state->isPaused())
+            eraseProgressDisplay(*state);
+        Logger::writeToStdout(s);
+        restoreProgressDisplay(*state);
     }
 
     std::optional<char> ask(std::string_view msg) override
     {
         auto state(state_.lock());
-        if (!state->active)
+        if (!state->active || state->isPaused())
             return {};
-        invalidateRedrawCache();
-        std::cerr << fmt("\r\e[K%s ", msg);
+        eraseProgressDisplay(*state);
+        std::cerr << fmt("%s ", msg);
         unhideCursorIfNeeded();
         auto s = trim(readLine(getStandardInput(), true));
         hideCursorIfNeeded();
+        restoreProgressDisplay(*state);
         if (s.size() != 1)
             return {};
-        draw(*state, {});
         return s[0];
     }
 
