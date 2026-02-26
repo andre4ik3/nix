@@ -344,11 +344,11 @@ public:
 
     Setting<bool> ignoreExceptionsDuringTry{
         this,
-        false,
+        true,
         "ignore-try",
         R"(
           If set to true, ignore exceptions inside 'tryEval' calls when evaluating Nix expressions in
-          debug mode (using the --debugger flag). By default, the debugger pauses on all exceptions.
+          debug mode (using the --debugger flag). By default, the debugger ignores exceptions from 'tryEval'.
         )"};
 
     Setting<bool> traceVerbose{
