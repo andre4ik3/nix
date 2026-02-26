@@ -72,3 +72,31 @@ writeIfdFlake "$flakeDir"
 pushd "$flakeDir"
 
 [[ $(nix flake show --json | jq -r ".inventory.packages.output.children.\"$system\".children.default.derivation.name") = top ]]
+
+cat >flake.nix<<EOF
+{
+  outputs = inputs: {
+    packages.$system = {
+      aNoDescription = import ./simple.nix;
+      bOneLineDescription = import ./simple.nix // { meta.description = "one line"; };
+      cMultiLineDescription = import ./simple.nix // { meta.description = ''
+         line one
+        line two
+      ''; };
+      dLongDescription = import ./simple.nix // { meta.description = ''
+        abcdefghijklmnopqrstuvwxyz
+      ''; };
+      eEmptyDescription = import ./simple.nix // { meta.description = ""; };
+    };
+  };
+}
+EOF
+unbuffer sh -c '
+  stty rows 20 cols 100
+  nix flake show --drv-names > show-output.txt
+'
+test "$(awk -F '[:] ' '/aNoDescription/{print $NF}' ./show-output.txt)" = "package 'simple'"
+test "$(awk -F '[:] ' '/bOneLineDescription/{print $NF}' ./show-output.txt)" = "package 'simple' - 'one line'"
+test "$(awk -F '[:] ' '/cMultiLineDescription/{print $NF}' ./show-output.txt)" = "package 'simple' - 'line one'"
+test "$(awk -F '[:] ' '/dLongDescription/{print $NF}' ./show-output.txt)" = "package 'simple' - 'abcdefghijklmnopqrs...'"
+test "$(awk -F '[:] ' '/eEmptyDescription/{print $NF}' ./show-output.txt)" = "package 'simple'"
