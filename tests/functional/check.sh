@@ -44,16 +44,13 @@ if checkBuildTempDirRemoved "$TEST_ROOT/log"; then false; fi
 test_custom_build_dir() {
   local customBuildDir="$TEST_ROOT/custom-build-dir"
 
-  # Nix does not create the parent directories, and perhaps it shouldn't try to
-  # decide the permissions of build-dir.
-  mkdir "$customBuildDir"
   nix-build check.nix -A failed --argstr checkBuildId "$checkBuildId" \
       --no-out-link --keep-failed --option build-dir "$TEST_ROOT/custom-build-dir" 2> "$TEST_ROOT/log" || status=$?
   [ "$status" = "100" ]
-  [[ 1 == "$(count "$customBuildDir/nix-"*)" ]]
-  local buildDir=("$customBuildDir/nix-"*)
+  [[ 1 == "$(count "$customBuildDir/"*)" ]]
+  local buildDir=("$customBuildDir/"*)
   if [[ "${#buildDir[@]}" -ne 1 ]]; then
-    echo "expected one nix-* directory, got: ${buildDir[*]}" >&2
+    echo "expected one build directory, got: ${buildDir[*]}" >&2
     exit 1
   fi
   if [[ -e ${buildDir[*]}/build ]]; then
