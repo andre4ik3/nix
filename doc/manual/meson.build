@@ -355,7 +355,6 @@ nix3_manpages = [
   'nix3-store-roots-daemon',
   'nix3-store-sign',
   'nix3-store-verify',
-  'nix3-upgrade-nix',
   'nix3-why-depends',
 ]
 
