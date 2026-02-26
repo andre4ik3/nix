@@ -9,6 +9,8 @@
 
 namespace nix {
 
+#define ANSI_DIM_ALREADY_VISITED "\e[38;5;244m"
+
 static std::string hilite(const std::string & s, size_t pos, size_t len, const std::string & colour = ANSI_RED)
 {
     return std::string(s, 0, pos) + colour + std::string(s, pos, len) + ANSI_NORMAL + std::string(s, pos + len);
@@ -177,7 +179,9 @@ struct CmdWhyDepends : SourceExprCommand, MixOperateOnOptions
                 logger->cout(
                     "%s%s%s%s" ANSI_NORMAL,
                     firstPad,
-                    node.visited ? "\e[38;5;244m" : "",
+                    node.path == dependencyPath ? ""
+                    : node.visited              ? ANSI_DIM_ALREADY_VISITED
+                                                : "",
                     firstPad != "" ? "→ " : "",
                     store->printStorePath(node.path));
             }
@@ -273,7 +277,9 @@ struct CmdWhyDepends : SourceExprCommand, MixOperateOnOptions
                     logger->cout(
                         "%s%s%s%s" ANSI_NORMAL,
                         firstPad,
-                        ref.second->visited ? "\e[38;5;244m" : "",
+                        ref.second->path == dependencyPath ? ANSI_BOLD
+                        : ref.second->visited              ? ANSI_DIM_ALREADY_VISITED
+                                                           : "",
                         last ? treeLast : treeConn,
                         store->printStorePath(ref.second->path));
                     node.visited = true;
