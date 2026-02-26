@@ -1,12 +1,12 @@
 # Remote Builds
 
 A local Nix installation can forward Nix builds to other machines,
-this allows multiple builds to be performed in parallel.
+allowing multiple builds to be performed in parallel.
 
 Remote builds also allow Nix to perform multi-platform builds in a
-semi-transparent way. For example, if you perform a build for a
+semi-transparent way. For example, if you perform a build for
 `aarch64-darwin` on an `x86_64-linux` machine, Nix can automatically
-forward the build to a `aarch64-darwin` machine, if one is available.
+forward the build to an `aarch64-darwin` machine, if one is available.
 
 ## Requirements
 
@@ -58,40 +58,32 @@ error: cannot connect to 'mac'
 then you need to ensure that the `PATH` of non-interactive login shells
 contains Nix.
 
-The [list of remote build machines](@docroot@/command-ref/conf-file.md#conf-builders) can be specified on the command line or in the Nix configuration file.
-For example, the following command allows you to build a derivation for `aarch64-darwin` on a Linux machine:
+## Configuration
 
-```console
-uname
-```
+The [list of remote build machines](@docroot@/command-ref/conf-file.md#conf-builders)
+can be specified on the command line or in the Nix configuration file.
+The former is convenient for testing.
 
-```console
-Linux
-```
+For example, the following command allows you to build a derivation for
+`aarch64-darwin` on a Linux machine:
 
 ```console
 nix build --impure \
- --expr '(with import <nixpkgs> { system = "aarch64-darwin"; }; runCommand "foo" {} "uname > $out")' \
- --builders 'ssh://mac aarch64-darwin'
+  --expr '(with import <nixpkgs> { system = "aarch64-darwin"; }; runCommand "foo" {} "uname > $out")' \
+  --builders 'ssh://mac aarch64-darwin'
 ```
+
+It is possible to specify multiple build machines separated by a semicolon or
+newline, e.g.
 
 ```console
-[1/0/1 built, 0.0 MiB DL] building foo on ssh://mac
+--builders 'ssh://mac aarch64-darwin ; ssh://beastie x86_64-freebsd'
 ```
 
-```console
-cat ./result
-```
+Additionally, there are two supported formats for `builders`:
 
-```console
-Darwin
-```
-
-It is possible to specify multiple build machines separated by a semicolon or a newline, e.g.
-
-```console
-  --builders 'ssh://mac aarch64-darwin ; ssh://beastie x86_64-freebsd'
-```
+- The legacy space-separated format.
+- A TOML configuration.
 
 Remote build machines can also be configured in [`nix.conf`](@docroot@/command-ref/conf-file.md), e.g.
 
@@ -106,5 +98,149 @@ file included in `builders` via the syntax `@/path/to/file`. For example,
 
 causes the list of machines in `/etc/nix/machines` to be included.
 (This is the default.)
+
+---
+
+Each machine specification consists of the following attributes. How those are
+combined depends on the format.
+
+1. `uri` (**required**)
+
+   The URI of the remote store in the format
+   `ssh[-ng]://[username@]hostname[?port=<port>]`, e.g. `ssh://nix@mac` or `ssh://mac`.
+
+2. `system-types` (**optional**)
+
+   A list of Nix platform type identifiers, such as `x86_64-darwin`.
+   A machine may support multiple platform types.
+
+   Defaults to the local platform type.
+
+3. `ssh-key` (**optional**)
+
+   The SSH identity file used to log in to the remote machine.
+
+   Defaults to SSH's regular identities.
+
+4. `jobs` (**optional**)
+
+   The maximum number of builds Nix will execute in parallel on that machine.
+
+   Defaults to 1; must be a non-negative integer.
+
+5. `speed-factor` (**optional**)
+
+   Indicates relative machine speed. If multiple machines match, Nix prefers
+   faster machines while accounting for load.
+
+   Defaults to 1; must be a non-negative number.
+
+6. `supported-features` (**optional**)
+
+   A list of supported features. If a derivation declares
+   `requiredSystemFeatures`, it is only scheduled onto machines supporting
+   those features.
+
+7. `mandatory-features` (**optional**)
+
+   A list of mandatory features. A machine is only used when all of its
+   mandatory features appear in the derivation's `requiredSystemFeatures`.
+
+8. `ssh-public-host-key` (**optional**)
+
+   The remote machine public host key.
+
+   Defaults to standard SSH known-hosts behavior when omitted.
+
+9. `enable` (**optional**, TOML only)
+
+   If set to `false`, the machine is statically disabled and not loaded.
+
+   Defaults to `true`.
+
+### Using a TOML configuration
+
+Each machine is configured as a key under `machines`:
+
+```toml
+version = 1
+
+[machines.andesite]
+uri = "ssh://nix@andesite.example.org"
+system-types = ["x86_64-linux"]
+jobs = 8
+speed-factor = 1.0
+supported-features = ["kvm"]
+ssh-key = "/home/nix/.ssh/id_ed25519"
+
+[machines.diorite]
+uri = "ssh://nix@diorite.example.org"
+system-types = ["x86_64-linux"]
+jobs = 8
+speed-factor = 2.0
+ssh-key = "/home/nix/.ssh/id_ed25519"
+
+[machines.legacy]
+uri = "ssh://nix@old-builder.example.org"
+enable = false
+```
+
+For ad-hoc CLI usage, TOML can also be provided inline, for example:
+
+```console
+--builders 'machines.andesite = { uri = "ssh://nix@andesite.example.org", jobs = 8 }'
+```
+
+> **Note**
+>
+> If `version` is omitted (for example, in ad-hoc CLI input), it defaults to
+> the latest supported version. For file-based config, providing `version` is
+> recommended for forward compatibility.
+
+### Using the legacy format
+
+> **Warning**
+>
+> This format is frozen and new options are expected to land only in TOML.
+
+The legacy format uses positional, space-separated fields in the order listed
+above. Use `-` to leave a field at its default.
+
+```text
+nix@andesite.example.org  x86_64-linux  /home/nix/.ssh/id_ed25519  8 1 kvm
+nix@diorite.example.org   x86_64-linux  /home/nix/.ssh/id_ed25519  8 2
+nix@granite.example.org   x86_64-linux  /home/nix/.ssh/id_ed25519  1 2 kvm benchmark
+```
+
+Special handling:
+
+- `uri`: for backward compatibility, `ssh://` may be omitted.
+- `ssh-public-host-key`: key must be base64 encoded in legacy format.
+
+### Format detection
+
+Nix first tries parsing `builders` as TOML.
+If TOML parsing fails and the input appears to be clearly TOML (for example,
+it contains `"`), a TOML error is reported.
+Otherwise, Nix retries using the legacy parser.
+
+### Builder selection
+
+Given machines like the above, `granite` will only build derivations that
+require its mandatory features, e.g.
+
+```nix
+requiredSystemFeatures = [ "benchmark" ];
+```
+
+or
+
+```nix
+requiredSystemFeatures = [ "benchmark" "kvm" ];
+```
+
+`diorite` cannot do builds that require `kvm`, while `andesite` can. For
+regular builds, `diorite` is preferred over `andesite` because it has a
+higher speed factor.
 
 [Nix instance]: @docroot@/glossary.md#gloss-nix-instance

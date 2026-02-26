@@ -3,6 +3,8 @@
   stdenv,
   mkMesonLibrary,
 
+  cmake, # for resolving toml11 and aws-crt-cpp deps
+
   unixtools,
   apple-sdk,
   freebsd,
@@ -14,8 +16,8 @@
   aws-crt-cpp,
   libseccomp,
   nlohmann_json,
+  toml11,
   sqlite,
-  cmake, # for resolving aws-crt-cpp dep
   wasmtime,
 
   busybox-sandbox-shell ? null,
@@ -76,12 +78,15 @@ mkMesonLibrary (finalAttrs: {
     (fileset.fileFilter (file: file.hasExt "sql") ./.)
   ];
 
-  nativeBuildInputs =
-    lib.optional withAWS cmake ++ lib.optional embeddedSandboxShell unixtools.hexdump;
+  nativeBuildInputs = [
+    cmake
+  ]
+  ++ lib.optional embeddedSandboxShell unixtools.hexdump;
 
   buildInputs = [
     boost
     curl
+    toml11
     sqlite
   ]
   ++ lib.optional stdenv.hostPlatform.isLinux libseccomp

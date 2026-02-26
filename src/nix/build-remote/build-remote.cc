@@ -125,7 +125,7 @@ static int main_build_remote(int argc, char ** argv)
         AutoCloseFD bestSlotLock;
         bool tracing = false;
 
-        auto machines = Machine::parseConfig({settings.thisSystem}, settings.getWorkerSettings().builders);
+        auto machines = getMachines();
         debug("got %d remote builders", machines.size());
 
         if (machines.empty()) {

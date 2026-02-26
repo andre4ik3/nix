@@ -42,16 +42,6 @@ struct Machine
      */
     bool mandatoryMet(const StringSet & features) const;
 
-    Machine(
-        const std::string & storeUri,
-        decltype(systemTypes) systemTypes,
-        decltype(sshKey) sshKey,
-        decltype(maxJobs) maxJobs,
-        decltype(speedFactor) speedFactor,
-        decltype(supportedFeatures) supportedFeatures,
-        decltype(mandatoryFeatures) mandatoryFeatures,
-        decltype(sshPublicHostKey) sshPublicHostKey);
-
     /**
      * Elaborate `storeUri` into a complete store reference,
      * incorporating information from the other fields of the `Machine`
@@ -78,5 +68,12 @@ struct Machine
      */
     static Machines parseConfig(const StringSet & defaultSystems, const std::string & config);
 };
+
+/**
+ * Parse machines from the `builders` setting, accepting either the
+ * TOML format or, as a fallback, the legacy one-line-per-machine
+ * format (see `Machine::parseConfig`).
+ */
+Machines getMachines();
 
 } // namespace nix
