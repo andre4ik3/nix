@@ -84,7 +84,7 @@ SSHMaster::SSHMaster(
     , sshPublicHostKey(parsePublicHostKey(authority.host, sshPublicHostKey))
     , compress(compress)
     , logFD(logFD)
-    , tmpDir(make_ref<AutoDelete>(createTempDir("", "nix", 0700)))
+    , tmpDir(make_ref<AutoDelete>(createTempDir("nix", 0700)))
 {
     checkValidAuthority(authority);
 }
