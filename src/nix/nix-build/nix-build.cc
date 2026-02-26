@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "nix/util/current-process.hh"
+#include "nix/util/environment-variables.hh"
 #include "nix/store/parsed-derivations.hh"
 #include "nix/store/derivation-options.hh"
 #include "nix/store/store-open.hh"
@@ -145,8 +146,6 @@ static void main_nix_build(int argc, char ** argv)
     std::filesystem::path script;
     std::vector<std::string> savedArgs;
 
-    AutoDelete tmpDir(createTempDir(myName, 0755));
-
     std::string outLink = "./result";
 
     // List of environment variables kept for --pure
@@ -210,7 +209,6 @@ static void main_nix_build(int argc, char ** argv)
 
     MyArgs myArgs(myName, [&](Strings::iterator & arg, const Strings::iterator & end) {
         if (*arg == "--help") {
-            deletePath(tmpDir);
             showManPage(myName);
         }
 
@@ -221,7 +219,7 @@ static void main_nix_build(int argc, char ** argv)
             ; // obsolete
 
         else if (*arg == "--no-out-link" || *arg == "--no-link")
-            outLink = (tmpDir.path() / "result").string();
+            outLink = "";
 
         else if (*arg == "--attr" || *arg == "-A")
             attrPaths.push_back(getArg(*arg, arg, end));
@@ -317,6 +315,10 @@ static void main_nix_build(int argc, char ** argv)
 
     if (packages && fromArgs)
         throw UsageError("'-p' and '-E' are mutually exclusive");
+
+    AutoDelete tmpDir(createTempDir("", myName));
+    if (outLink.empty())
+        outLink = (tmpDir.path() / "result").string();
 
     auto store = openStore();
     auto evalStore = myArgs.evalStoreUrl ? openStore(StoreReference{*myArgs.evalStoreUrl}) : store;
@@ -560,7 +562,8 @@ static void main_nix_build(int argc, char ** argv)
             env["__ETC_PROFILE_SOURCED"] = "1";
         }
 
-        env["NIX_BUILD_TOP"] = env["TMPDIR"] = env["TEMPDIR"] = env["TMP"] = env["TEMP"] = tmpDir.path().string();
+        auto shellTmp = getEnvNonEmpty("TMPDIR").value_or("/tmp");
+        env["NIX_BUILD_TOP"] = env["TMPDIR"] = env["TEMPDIR"] = env["TMP"] = env["TEMP"] = shellTmp;
         env["NIX_STORE"] = store->storeDir;
         env["NIX_BUILD_CORES"] =
             fmt("%d",
