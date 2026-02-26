@@ -488,6 +488,21 @@ public:
             See also the per-store [`build-dir`](@docroot@/store/types/local-store.md#store-local-store-build-dir) setting.
         )"};
 
+    Setting<std::optional<AbsolutePath>> tempDir{
+        this,
+        std::nullopt,
+        "temp-dir",
+        R"(
+            The directory on the host used as the default temporary directory.
+
+            If not set, Nix will use the system temporary directory indicated by the `TMPDIR` environment variable.
+
+            This is used for operations that would otherwise use `TMPDIR`.
+            If [`build-dir`](#conf-build-dir) is set, that takes precedence for build directories.
+
+            If set, this path should exist and be accessible to all users that run Nix.
+        )"};
+
     Setting<std::set<std::filesystem::path>> allowedImpureHostPrefixes{
         this,
         {},

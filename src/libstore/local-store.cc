@@ -87,10 +87,12 @@ const LocalSettings & LocalBuildStoreConfig::getLocalSettings() const
 
 std::filesystem::path LocalBuildStoreConfig::getBuildDir() const
 {
-    auto & bd = getLocalSettings().buildDir.get();
-    return bd.has_value()               ? *bd
-           : buildDir.get().has_value() ? *buildDir.get()
-                                        : AbsolutePath{stateDir.get() / "builds"};
+    auto & localSettings = getLocalSettings();
+    auto & bd = localSettings.buildDir.get();
+    return bd.has_value()                            ? *bd
+           : buildDir.get().has_value()              ? *buildDir.get()
+           : localSettings.tempDir.get().has_value() ? *localSettings.tempDir.get()
+                                                     : AbsolutePath{stateDir.get() / "builds"};
 }
 
 ref<Store> LocalStore::Config::openStore() const

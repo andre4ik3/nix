@@ -37,8 +37,8 @@ testTmpDir=$TEST_ROOT/tmp-dir
 mkdir -p "$testTmpDir"
 # shellcheck disable=SC2016
 output=$(TMPDIR="$testTmpDir" nix-shell --pure "$shellDotNix" -A shellDrv --run 'echo $NIX_BUILD_TOP')
-[[ "$output" == "${testTmpDir}"/* ]] || {
-    echo "expected $output == ${testTmpDir}/*" >&2
+[[ "$output" == "$testTmpDir" ]] || {
+    echo "expected $output == $testTmpDir" >&2
     exit 1
 }
 

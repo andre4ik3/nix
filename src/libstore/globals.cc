@@ -8,6 +8,8 @@
 #include "nix/util/abstract-setting-to-json.hh"
 #include "nix/util/compute-levels.hh"
 #include "nix/util/executable-path.hh"
+#include "nix/util/file-system.hh"
+#include "nix/util/signals.hh"
 #include "nix/store/filetransfer.hh"
 
 #include <algorithm>
@@ -653,6 +655,13 @@ void initLibStore(bool loadConfig)
 
     initLibUtil();
 
+    setDefaultTempDirProvider([]() -> std::optional<std::filesystem::path> {
+        auto configured = settings.getLocalSettings().tempDir.get();
+        if (!configured)
+            return std::nullopt;
+        return std::filesystem::path(*configured);
+    });
+
     if (loadConfig)
         loadConfFile(globalConfig);
 
@@ -670,13 +679,6 @@ void initLibStore(bool loadConfig)
        https://github.com/apple-oss-distributions/objc4/blob/01edf1705fbc3ff78a423cd21e03dfc21eb4d780/runtime/objc-initialize.mm#L614-L636
     */
     curl_global_init(CURL_GLOBAL_ALL);
-#ifdef __APPLE__
-    /* On macOS, don't use the per-session TMPDIR (as set e.g. by
-       sshd). This breaks build users because they don't have access
-       to the TMPDIR, in particular in ‘nix-store --serve’. */
-    if (hasPrefix(defaultTempDir().string(), "/var/folders/"))
-        unsetenv("TMPDIR");
-#endif
 
     initLibStoreDone = true;
 }

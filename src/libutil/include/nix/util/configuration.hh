@@ -8,6 +8,7 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include "nix/util/error.hh"
+#include "nix/util/file-path.hh"
 #include "nix/util/json-non-null.hh"
 #include "nix/util/types.hh"
 #include "nix/util/fmt.hh"
@@ -52,8 +53,8 @@ class AbstractSetting;
 
 struct ApplyConfigOptions
 {
-    std::optional<Path> path;
-    std::optional<Path> home;
+    std::optional<std::filesystem::path> path;
+    std::optional<std::filesystem::path> home;
 };
 
 class AbstractConfig
@@ -187,6 +188,16 @@ public:
 
     void convertToArgs(Args & args, const std::string & category) override;
 };
+
+namespace detail {
+
+template<typename Options>
+Config * asConfig(Options * options)
+{
+    return static_cast<Config *>(options);
+}
+
+} // namespace detail
 
 class AbstractSetting
 {
@@ -489,6 +500,26 @@ public:
         options->addSetting(this);
     }
 
+    template<typename Options>
+    Setting(
+        Options * options,
+        const T & def,
+        const std::string & name,
+        const std::string & description,
+        const StringSet & aliases = {},
+        const bool documentDefault = true,
+        std::optional<ExperimentalFeature> experimentalFeature = std::nullopt)
+        : Setting(
+              detail::asConfig(options),
+              def,
+              name,
+              description,
+              aliases,
+              documentDefault,
+              std::move(experimentalFeature))
+    {
+    }
+
     void operator=(const T & v)
     {
         this->assign(v);
@@ -584,6 +615,17 @@ public:
         const std::string & name,
         const std::string & description,
         const StringSet & aliases = {});
+
+    template<typename Options>
+    PathsSetting(
+        Options * options,
+        const Paths & def,
+        const std::string & name,
+        const std::string & description,
+        const StringSet & aliases = {})
+        : PathsSetting(detail::asConfig(options), def, name, description, aliases)
+    {
+    }
 
     Paths parse(const std::string & str) const override;
 };

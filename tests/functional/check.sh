@@ -60,6 +60,57 @@ test_custom_build_dir() {
 }
 test_custom_build_dir
 
+test_custom_temp_dir() {
+  # Like test_custom_build_dir(), but configure temp-dir instead.
+  local customTempDir="$TEST_ROOT/custom-temp-dir"
+
+  mkdir "$customTempDir"
+  local status=
+  nix-build check.nix -A failed --argstr checkBuildId "$checkBuildId" \
+      --no-out-link --keep-failed --option temp-dir "$customTempDir" 2> "$TEST_ROOT/log" || status=$?
+  [ "$status" = "100" ]
+  # Don't assert a specific temp dir prefix; only location is guaranteed.
+  local buildDir
+  buildDir=$(sed -n 's/CHECK_TMPDIR=//p' "$TEST_ROOT/log" | head -1)
+  [[ $buildDir = "$customTempDir"/* ]]
+  if [[ -e "$buildDir/build" ]]; then
+      buildDir="$buildDir/build"
+  fi
+  grep "$checkBuildId" "$buildDir/checkBuildId"
+
+  # Also check a non-build-dir code path: nix-shell rcfile temp path.
+  local rcpath
+  # shellcheck disable=SC2016 # $0 must expand inside the spawned nix-shell.
+  rcpath=$(NIX_BUILD_SHELL=$SHELL nix-shell check.nix -A deterministic --option temp-dir "$customTempDir" --run 'echo $0' 2> "$TEST_ROOT/log")
+  [[ $rcpath = "$customTempDir"/* ]]
+}
+test_custom_temp_dir
+
+test_shell_preserves_tmpdir() {
+  # Ensure interactive-shell commands do not overwrite TMPDIR with temp-dir.
+  local envTempDir="$TEST_ROOT/shell-temp-dir-env"
+  mkdir "$envTempDir"
+  local settingTempDir="$TEST_ROOT/shell-temp-dir-setting"
+  mkdir "$settingTempDir"
+
+  # shellcheck disable=SC2016 # $out is Nix code, not shell expansion.
+  local expr='with import ./config.nix; mkDerivation { name = "foo"; buildCommand = "echo foo > $out"; outputs = [ "out" ]; }'
+
+  local output
+  # shellcheck disable=SC2016 # $TMPDIR must expand in the command shell.
+  output=$(TMPDIR="$envTempDir" NIX_BUILD_SHELL=$SHELL nix-shell -E "$expr" --option temp-dir "$settingTempDir" --command 'echo $TMPDIR' 2> "$TEST_ROOT/log")
+  [[ $output = "$envTempDir" ]]
+
+  # shellcheck disable=SC2016 # $TMPDIR must expand in the command shell.
+  output=$(TMPDIR="$envTempDir" nix develop --impure -E "$expr" --option temp-dir "$settingTempDir" --command bash -c 'echo $TMPDIR' 2> "$TEST_ROOT/log" || true)
+  [[ -z $output || $output != "$settingTempDir"/* ]]
+
+  # shellcheck disable=SC2016 # $TMPDIR must expand in the command shell.
+  output=$(TMPDIR="$envTempDir" nix shell --impure -E "$expr" --option temp-dir "$settingTempDir" --command bash -c 'echo $TMPDIR' 2> "$TEST_ROOT/log" || true)
+  [[ -z $output || $output != "$settingTempDir"/* ]]
+}
+test_shell_preserves_tmpdir
+
 nix-build check.nix -A deterministic --argstr checkBuildId "$checkBuildId" \
     --no-out-link 2> "$TEST_ROOT/log"
 checkBuildTempDirRemoved "$TEST_ROOT/log"

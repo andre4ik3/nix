@@ -39,6 +39,12 @@ struct BaseSetting<StringMap>::trait
 };
 
 template<>
+struct BaseSetting<std::list<std::filesystem::path>>::trait
+{
+    static constexpr bool appendable = true;
+};
+
+template<>
 struct BaseSetting<std::set<ExperimentalFeature>>::trait
 {
     static constexpr bool appendable = true;
@@ -62,6 +68,8 @@ template<>
 void BaseSetting<StringSet>::appendOrSet(StringSet newValue, bool append);
 template<>
 void BaseSetting<StringMap>::appendOrSet(StringMap newValue, bool append);
+template<>
+void BaseSetting<std::list<std::filesystem::path>>::appendOrSet(std::list<std::filesystem::path> newValue, bool append);
 template<>
 void BaseSetting<std::set<ExperimentalFeature>>::appendOrSet(std::set<ExperimentalFeature> newValue, bool append);
 
@@ -128,6 +136,7 @@ NIX_DECLARE_CONFIG_SERIALISER(bool)
 NIX_DECLARE_CONFIG_SERIALISER(Strings)
 NIX_DECLARE_CONFIG_SERIALISER(StringSet)
 NIX_DECLARE_CONFIG_SERIALISER(StringMap)
+NIX_DECLARE_CONFIG_SERIALISER(std::list<std::filesystem::path>)
 NIX_DECLARE_CONFIG_SERIALISER(std::set<ExperimentalFeature>)
 NIX_DECLARE_CONFIG_SERIALISER(std::filesystem::path)
 NIX_DECLARE_CONFIG_SERIALISER(AbsolutePath)
