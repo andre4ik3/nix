@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 #include <sys/types.h>
+#include <vector>
 
 namespace nix::unix {
 
@@ -18,6 +19,7 @@ struct PeerInfo
     std::optional<pid_t> pid;
     std::optional<uid_t> uid;
     std::optional<gid_t> gid;
+    std::vector<gid_t> supplementaryGids;
 };
 
 /**
