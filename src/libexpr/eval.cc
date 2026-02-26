@@ -860,7 +860,7 @@ void EvalState::runDebugRepl(const Error * error, const Env & env, const Expr & 
     }();
 
     if (error) {
-        printError("%s\n", error->what());
+        printError("%s\n", Uncolored(error->what()));
 
         if (trylevel > 0 && error->info().level != lvlInfo)
             printError(

@@ -73,7 +73,7 @@ WorkerProto::BasicClientConnection::processStderrReturn(Sink * sink, Source * so
         }
 
         else if (msg == STDERR_NEXT)
-            printError(chomp(readString(from)));
+            printError("%1%", Uncolored(chomp(readString(from))));
 
         else if (msg == STDERR_START_ACTIVITY) {
             auto act = readNum<ActivityId>(from);

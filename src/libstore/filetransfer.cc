@@ -983,13 +983,18 @@ struct curlFileTransfer : public FileTransfer
                     requestRange = true;
                 warn(
                     "%s; retrying from offset %d in %d ms (attempt %d/%d)",
-                    exc.message(),
-                    writtenToSink,
-                    delay.count(),
-                    attempt,
-                    effAttempts);
+                    Uncolored(exc.message()),
+                    Uncolored(writtenToSink),
+                    Uncolored(delay.count()),
+                    Uncolored(attempt),
+                    Uncolored(effAttempts));
             } else {
-                warn("%s; retrying in %d ms (attempt %d/%d)", exc.message(), delay.count(), attempt, effAttempts);
+                warn(
+                    "%s; retrying in %d ms (attempt %d/%d)",
+                    Uncolored(exc.message()),
+                    Uncolored(delay.count()),
+                    Uncolored(attempt),
+                    Uncolored(effAttempts));
             }
 
             errorSink.reset();

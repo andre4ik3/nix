@@ -352,12 +352,12 @@ extern Verbosity verbosity;
  * level. Note that this has to be implemented as a macro to ensure that the
  * arguments are evaluated lazily.
  */
-#define printMsgUsing(loggerParam, level, args...) \
-    do {                                           \
-        auto __lvl = level;                        \
-        if (__lvl <= nix::verbosity) {             \
-            loggerParam->log(__lvl, fmt(args));    \
-        }                                          \
+#define printMsgUsing(loggerParam, level, args...)        \
+    do {                                                  \
+        auto __lvl = level;                               \
+        if (__lvl <= nix::verbosity) {                    \
+            loggerParam->log(__lvl, HintFmt(args).str()); \
+        }                                                 \
     } while (0)
 #define printMsg(level, args...) printMsgUsing(logger, level, args)
 

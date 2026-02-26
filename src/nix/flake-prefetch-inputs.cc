@@ -52,7 +52,7 @@ struct CmdFlakePrefetchInputs : FlakeCommand
                         fetchToStore(
                             fetchSettings, *store, accessor, FetchMode::Copy, lockedNode->lockedRef.input.getName());
                 } catch (Error & e) {
-                    printError("%s", e.what());
+                    printError("%s", Uncolored(e.what()));
                     nrFailed++;
                 }
             }

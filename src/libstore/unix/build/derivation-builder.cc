@@ -157,7 +157,7 @@ static void handleDiffHook(
             throw ExecError(diffRes.first, "diff-hook program %s %s", PathFmt(diffHook), statusToString(diffRes.first));
 
         if (diffRes.second != "")
-            printError(chomp(diffRes.second));
+            printError("%1%", Uncolored(chomp(diffRes.second)));
     } catch (Error & error) {
         ErrorInfo ei = error.info();
         // FIXME: wrap errors.
@@ -751,7 +751,7 @@ void DerivationBuilderImpl::processSandboxSetupMessages()
             ex.addTrace({}, "while setting up the build environment");
             throw std::move(ex);
         }
-        debug("sandbox setup: " + msg);
+        debug("sandbox setup: %1%", Uncolored(msg));
         msgs.push_back(std::move(msg));
     }
 }

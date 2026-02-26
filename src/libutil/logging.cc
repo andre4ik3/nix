@@ -152,10 +152,10 @@ public:
     {
         if (type == resBuildLogLine && printBuildLogs) {
             auto lastLine = fields[0].s;
-            printError(lastLine);
+            printError("%1%", Uncolored(lastLine));
         } else if (type == resPostBuildLogLine && printBuildLogs) {
             auto lastLine = fields[0].s;
-            printError("post-build-hook: " + lastLine);
+            printError("post-build-hook: %1%", Uncolored(lastLine));
         }
     }
 };

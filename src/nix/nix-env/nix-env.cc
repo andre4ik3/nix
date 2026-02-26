@@ -676,7 +676,7 @@ static void upgradeDerivations(Globals & globals, const Strings & args, UpgradeT
                 if (bestElem != availElems.end() && i.queryOutPath() != bestElem->queryOutPath()) {
                     const char * action =
                         compareVersions(drvName.version, bestVersion) <= 0 ? "upgrading" : "downgrading";
-                    printInfo("%1% '%2%' to '%3%'", action, i.queryName(), bestElem->queryName());
+                    printInfo("%1% '%2%' to '%3%'", Uncolored(action), i.queryName(), bestElem->queryName());
                     newElems.push_back(*bestElem);
                 } else
                     newElems.push_back(i);

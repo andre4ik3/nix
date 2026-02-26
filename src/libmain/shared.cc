@@ -67,7 +67,7 @@ void printMissing(ref<Store> store, const MissingPaths & missing, Verbosity lvl)
             printMsg(lvl, "these %d derivations will be built:", missing.willBuild.size());
         auto sorted = store->topoSortPaths(missing.willBuild);
         for (auto & i : sorted | std::views::reverse)
-            printMsg(lvl, "  %s", store->printStorePath(i));
+            printMsg(lvl, "  %s", Uncolored(store->printStorePath(i)));
     }
 
     if (!missing.willSubstitute.empty()) {
@@ -97,7 +97,7 @@ void printMissing(ref<Store> store, const MissingPaths & missing, Verbosity lvl)
                     return lhs->name() < rhs->name();
             });
         for (auto p : willSubstituteSorted)
-            printMsg(lvl, "  %s", store->printStorePath(*p));
+            printMsg(lvl, "  %s", Uncolored(store->printStorePath(*p)));
     }
 
     if (!missing.unknown.empty()) {
@@ -106,7 +106,7 @@ void printMissing(ref<Store> store, const MissingPaths & missing, Verbosity lvl)
             "don't know how to build these paths%s:",
             (settings.readOnlyMode ? " (may be caused by read-only store access)" : ""));
         for (auto & i : missing.unknown)
-            printMsg(lvl, "  %s", store->printStorePath(i));
+            printMsg(lvl, "  %s", Uncolored(store->printStorePath(i)));
     }
 }
 

@@ -294,7 +294,7 @@ Goal::Co PathSubstitutionGoal::tryToRun(
                This is not a failure, so log as a warning instead of an error. */
             logWarning({.msg = sg.info().msg});
         } catch (...) {
-            printError(e.what());
+            printError("%1%", Uncolored(e.what()));
             substituterFailed = true;
         }
 

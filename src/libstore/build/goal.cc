@@ -267,7 +267,7 @@ Goal::Done Goal::amDone(ExitCode result)
 
 void Goal::trace(std::string_view s)
 {
-    debug("%1%: %2%", name, s);
+    debug("%1%: %2%", Uncolored(name), Uncolored(s));
 }
 
 void Goal::work()
