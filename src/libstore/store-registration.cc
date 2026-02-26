@@ -14,20 +14,23 @@ ref<Store> openStore()
     return openStore(StoreReference{settings.storeUri.get()});
 }
 
-ref<Store> openStore(const std::string & uri, const Store::Config::Params & extraParams)
+ref<Store> openStore(const std::string & uri, const Store::Config::Params & extraParams, AllowDaemon allowDaemon)
 {
-    return openStore(StoreReference::parse(uri, extraParams));
+    return openStore(StoreReference::parse(uri, extraParams), allowDaemon);
 }
 
-ref<Store> openStore(StoreReference && storeURI)
+ref<Store> openStore(StoreReference && storeURI, AllowDaemon allowDaemon)
 {
-    auto store = resolveStoreConfig(std::move(storeURI))->openStore();
+    auto store = resolveStoreConfig(std::move(storeURI), allowDaemon)->openStore();
     store->init();
     return store;
 }
 
-ref<StoreConfig> resolveStoreConfig(StoreReference && storeURI)
+ref<StoreConfig> resolveStoreConfig(StoreReference && storeURI, AllowDaemon allowDaemon)
 {
+    if (allowDaemon == AllowDaemon::Disallow && std::holds_alternative<StoreReference::Daemon>(storeURI.variant))
+        throw Error("tried to open a daemon store in a context that doesn't support this");
+
     auto & params = storeURI.params;
 
     auto storeConfig = std::visit(
@@ -56,7 +59,9 @@ ref<StoreConfig> resolveStoreConfig(StoreReference && storeURI)
                         unreachable();
                     }
                 } localFSStoreConfig{params};
-                if (
+                if (allowDaemon == AllowDaemon::Allow && pathExists(getDaemonSocketPath(localFSStoreConfig)))
+                    return make_ref<UDSRemoteStore::Config>(params);
+                else if (
 #ifdef _WIN32
                     _waccess
 #else
@@ -65,8 +70,6 @@ ref<StoreConfig> resolveStoreConfig(StoreReference && storeURI)
                     (localFSStoreConfig.stateDir.get().c_str(), R_OK | W_OK)
                     == 0)
                     return make_ref<LocalStore::Config>(params);
-                else if (pathExists(getDaemonSocketPath(localFSStoreConfig)))
-                    return make_ref<UDSRemoteStore::Config>(params);
 #ifdef __linux__
                 else if (
                     !pathExists(localFSStoreConfig.stateDir.get()) && params.empty() && !isRootUser()

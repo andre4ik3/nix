@@ -98,7 +98,7 @@ static int main_build_remote(int argc, char ** argv)
 
         initPlugins();
 
-        auto store = openStore();
+        auto store = openStore(settings.storeUri.to_string(), {}, AllowDaemon::Disallow);
 
         /* It would be more appropriate to use $XDG_RUNTIME_DIR, since
            that gets cleared on reboot, but it wouldn't work on macOS. */

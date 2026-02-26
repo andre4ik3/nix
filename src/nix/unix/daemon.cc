@@ -48,6 +48,8 @@
 
 namespace nix {
 
+static constexpr int SD_LISTEN_FDS_START = 3;
+
 /**
  * Settings related to authenticating clients for the Nix daemon.
  *
@@ -241,6 +243,13 @@ static bool matchUser(
     return false;
 }
 
+static ref<Store> openUncachedStore(AllowDaemon allowDaemon = AllowDaemon::Allow)
+{
+    Store::Config::Params params; // FIXME: get params from somewhere
+    params["path-info-cache-size"] = "0";
+    return openStore(settings.storeUri.to_string(), params, allowDaemon);
+}
+
 /**
  * Authenticate a potential client
  *
@@ -265,9 +274,9 @@ static std::pair<TrustedFlag, std::optional<std::string>> authPeer(const unix::P
         auto gr = getgrgid(gid);
         auto groupName = gr ? std::string(gr->gr_name) : std::to_string(gid);
         auto gidString = std::to_string(gid);
+        const auto & buildUsersGroup = settings.getLocalSettings().buildUsersGroup.get();
 
-        if (groupName == settings.getLocalSettings().buildUsersGroup
-            || gidString == settings.getLocalSettings().buildUsersGroup) {
+        if (groupName == buildUsersGroup || gidString == buildUsersGroup) {
             throw Error(
                 "the user '%1%' is not allowed to connect to the Nix daemon as its group is '%2%', "
                 "which is the group of users running the sandboxed builds.",
@@ -330,13 +339,11 @@ static std::pair<bool, int> getSocketActivationConnection()
  * Run a server. The loop opens a socket and accepts new connections from that
  * socket.
  *
- * @param storeConfig The store configuration to use for opening stores.
  * @param forceTrustClientOpt If present, force trusting or not trusted
  * the client. Otherwise, decide based on the authentication settings
  * and user credentials (from the unix domain socket).
  */
 static void daemonLoop(
-    ref<const StoreConfig> storeConfig,
     std::optional<TrustedFlag> forceTrustClientOpt,
     std::filesystem::path socketPath)
 {
@@ -454,9 +461,8 @@ static void daemonLoop(
                 options.runExitHandlers = true;
                 options.allowVfork = false;
                 startProcess(
-                    [&, storeConfig, closeListeners = std::move(closeListeners)]() {
+                    [&, closeListeners = std::move(closeListeners)]() {
                         setInterrupted(false);
-
                         closeListeners();
 
                         // Background the daemon.
@@ -470,10 +476,8 @@ static void daemonLoop(
                         updatePeerPidArg(savedArgv ? savedArgv[1] : nullptr, peer.pid);
 
                         // Handle the connection.
-                        auto store = storeConfig->openStore();
-                        store->init();
                         processConnection(
-                            std::move(store),
+                            openUncachedStore(AllowDaemon::Disallow),
                             FdSource(remote.get()),
                             FdSink(remote.get()),
                             trusted,
@@ -488,8 +492,7 @@ static void daemonLoop(
     }
 }
 
-static void
-daemonInstance(ref<StoreConfig> storeConfig, std::optional<TrustedFlag> forceTrustClientOpt, char * peerPidArg)
+static void daemonInstance(std::optional<TrustedFlag> forceTrustClientOpt, char * peerPidArg)
 {
     auto [launchedByManager, connectionFd] = getSocketActivationConnection();
 
@@ -538,9 +541,8 @@ daemonInstance(ref<StoreConfig> storeConfig, std::optional<TrustedFlag> forceTru
     if (!launchedByManager && setsid() == -1)
         throw SysError("creating a new session");
 
-    auto store = storeConfig->openStore();
-    store->init();
-    processConnection(store, FdSource(connectionFd), FdSink(connectionFd), trusted, NotRecursive);
+    processConnection(
+        openUncachedStore(AllowDaemon::Disallow), FdSource(connectionFd), FdSink(connectionFd), trusted, NotRecursive);
 }
 
 /**
@@ -681,10 +683,10 @@ static void runDaemon(
                         "daemon socket path %s is the same as the store's socket path; this will fail",
                         PathFmt(socketPath));
 
-                daemonLoop(storeConfig, forceTrustClientOpt, std::move(socketPath));
+                daemonLoop(forceTrustClientOpt, std::move(socketPath));
             },
             [&](SocketActivated socketActivated) {
-                daemonInstance(storeConfig, forceTrustClientOpt, socketActivated.peerPidArg);
+                daemonInstance(forceTrustClientOpt, socketActivated.peerPidArg);
             },
         },
         mode);
