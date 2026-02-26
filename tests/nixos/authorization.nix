@@ -1,19 +1,35 @@
 {
   name = "authorization";
 
-  nodes.machine = {
-    virtualisation.writableStore = true;
-    # TODO add a test without allowed-users setting. allowed-users is uncommon among NixOS users.
-    nix.settings.allowed-users = [
-      "alice"
-      "bob"
-    ];
-    nix.settings.trusted-users = [ "alice" ];
+  nodes.machine =
+    { config, ... }:
+    {
+      virtualisation.writableStore = true;
+      # TODO add a test without allowed-users setting. allowed-users is uncommon among NixOS users.
+      nix.settings.allowed-users = [
+        "alice"
+        "bob"
+        "@special-group"
+      ];
+      nix.settings.trusted-users = [ "alice" ];
 
-    users.users.alice.isNormalUser = true;
-    users.users.bob.isNormalUser = true;
-    users.users.mallory.isNormalUser = true;
-  };
+      users.users.alice.isNormalUser = true;
+      users.users.bob.isNormalUser = true;
+      users.users.mallory.isNormalUser = true;
+      users.groups.special-group = { };
+
+      systemd.services.nix-connect-test = {
+        description = "Test nix daemon auth with DynamicUser supplementary groups";
+        serviceConfig = {
+          DynamicUser = true;
+          SupplementaryGroups = "special-group";
+          ExecStart = "${config.nix.package}/bin/nix store ping";
+          Restart = "on-failure";
+          RemainAfterExit = true;
+        };
+        wantedBy = [ "multi-user.target" ];
+      };
+    };
 
   testScript =
     let
@@ -21,6 +37,7 @@
     in
     ''
       machine.wait_for_unit("multi-user.target")
+      machine.wait_for_unit("nix-connect-test.service")
       machine.succeed("""
         exec 1>&2
         echo kSELDhobKaF8/VdxIxdP7EQe+Q > one
