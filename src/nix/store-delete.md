@@ -20,6 +20,12 @@ R""(
   # nix store delete --recursive --skip-alive --also-referrers nixpkgs#hello
   ```
 
+* Delete a `result` symlink and the path it points to:
+
+  ```console
+  # nix store delete --unlink ./result
+  ```
+
 # Description
 
 This command deletes the store paths specified by [*installables*](./nix.md#installables),
@@ -32,5 +38,9 @@ gc`.
 With the option `--ignore-liveness`, reachability from the roots is
 ignored. However, the path still won't be deleted if there are other
 paths in the store that refer to it (i.e., depend on it).
+
+With `--unlink`, any command-line path arguments that are symlinks to
+store paths are unlinked first. This is useful for deleting an output
+and its GC root in one command.
 
 )""
