@@ -248,7 +248,6 @@
         "ch-nix-security": "installation/nix-security.html",
         "sec-obtaining-source": "installation/obtaining-source.html",
         "sec-prerequisites-source": "installation/prerequisites-source.html",
-        "ch-upgrading-nix": "installation/upgrading.html",
         "ch-about-nix": "introduction.html",
         "chap-introduction": "introduction.html",
         "ch-basic-package-mgmt": "package-management/index.html",

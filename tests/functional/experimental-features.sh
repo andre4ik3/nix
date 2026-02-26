@@ -78,4 +78,3 @@ exit_code_both_ways config show --auto-allocate-uids
 nix --experimental-features '' --help 1>/dev/null
 nix --experimental-features '' doctor --help 1>/dev/null
 nix --experimental-features '' repl --help 1>/dev/null
-nix --experimental-features '' upgrade-nix --help 1>/dev/null
