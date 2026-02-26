@@ -8,6 +8,7 @@
   pkg-config,
 
   jq,
+  expect,
   git,
   mercurial,
   unixtools,
@@ -55,6 +56,7 @@ mkMesonDerivation (
       pkg-config
 
       jq
+      expect
       git
       mercurial
       unixtools.script

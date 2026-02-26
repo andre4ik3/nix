@@ -26,10 +26,12 @@
 #include "nix/util/exit.hh"
 #include "nix/cmd/flake-schemas.hh"
 #include "nix/store/names.hh"
+#include "nix/util/terminal.hh"
 
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <iomanip>
+#include <limits>
 
 #include "nix/util/strings-inline.hh"
 
@@ -948,7 +950,8 @@ struct CmdFlakeShow : FlakeCommand, MixJSON, MixFlakeSchemas
                         auto drvObj = nlohmann::json::object();
 
                         if (json || showDrvNames)
-                            drvObj.emplace("name", drv->getAttr(state->s.name)->getString());
+                            if (auto name = drv->maybeGetAttr(state->s.name))
+                                drvObj.emplace("name", name->getString());
 
                         if (showDrvPaths) {
                             auto drvPath = drv->forceDerivation();
@@ -1032,28 +1035,63 @@ struct CmdFlakeShow : FlakeCommand, MixJSON, MixFlakeSchemas
 
             render = [&](nlohmann::json j, const std::string & headerPrefix, const std::string & nextPrefix) {
                 auto what = j.find("what");
+                auto shortDescription = j.find("shortDescription");
                 auto filtered = j.find("filtered");
                 auto isLegacy = j.find("isLegacy");
                 auto derivation = j.find("derivation");
 
-                auto s = headerPrefix;
-
-                if (what != j.end())
-                    s += fmt(": %s", (std::string) *what);
-
-                if (derivation != j.end()) {
-                    auto name = derivation->find("name");
-                    if (name != derivation->end())
-                        s += fmt(ANSI_ITALIC " [%s]" ANSI_NORMAL, (std::string) *name);
-                }
+                std::string s;
 
                 if (filtered != j.end() && (bool) *filtered)
-                    s += " " ANSI_WARNING "omitted" ANSI_NORMAL " (use '--all-systems' to show)";
+                    s = ANSI_WARNING "omitted" ANSI_NORMAL " (use '--all-systems' to show)";
+                else if (isLegacy != j.end() && (bool) *isLegacy)
+                    s = ANSI_WARNING "omitted" ANSI_NORMAL " (use '--legacy' to show)";
+                else {
+                    if (what != j.end())
+                        s = (std::string) *what;
 
-                if (isLegacy != j.end() && (bool) *isLegacy)
-                    s += " " ANSI_WARNING "omitted" ANSI_NORMAL " (use '--legacy' to show)";
+                    if (derivation != j.end()) {
+                        auto name = derivation->find("name");
+                        if (name != derivation->end())
+                            s += " '" + name->get<std::string>() + "'";
+                    }
 
-                logger->cout(s);
+                    if (shortDescription != j.end() && shortDescription->is_string()
+                        && !shortDescription->get<std::string>().empty()) {
+                        auto desc = trim(shortDescription->get<std::string>());
+                        auto firstLineDesc = desc.substr(0, desc.find('\n'));
+
+                        auto windowWidth = getWindowWidth();
+                        if (windowWidth != std::numeric_limits<unsigned int>::max()) {
+                            auto headerLength = filterANSIEscapes(headerPrefix).size();
+                            auto baseLength = filterANSIEscapes(s).size();
+                            // ": " + " - ''"
+                            constexpr size_t decorationLength = 2 + 5;
+                            auto reserved = headerLength + baseLength + decorationLength;
+                            if (reserved < windowWidth) {
+                                auto maxDescLen = windowWidth - reserved;
+                                if (firstLineDesc.size() > maxDescLen) {
+                                    if (maxDescLen > 3) {
+                                        firstLineDesc.resize(maxDescLen - 3);
+                                        firstLineDesc += "...";
+                                    } else {
+                                        firstLineDesc.clear();
+                                    }
+                                }
+                            } else {
+                                firstLineDesc.clear();
+                            }
+                        }
+
+                        if (!firstLineDesc.empty())
+                            s += " - '" + firstLineDesc + "'";
+                    }
+                }
+
+                if (s.empty())
+                    logger->cout("%s", headerPrefix);
+                else
+                    logger->cout("%s: %s", headerPrefix, s);
 
                 auto children = j.find("children");
 
