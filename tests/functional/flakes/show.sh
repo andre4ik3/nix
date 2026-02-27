@@ -22,6 +22,17 @@ assert show_output.inventory.legacyPackages.output.children.${builtins.currentSy
 true
 '
 
+# `--eval-system` should control system selection for flake output traversal.
+nix flake show --eval-system someOtherSystem --json > show-output.json
+# shellcheck disable=SC2016
+nix eval --impure --expr '
+let show_output = builtins.fromJSON (builtins.readFile ./show-output.json);
+in
+assert show_output.inventory.packages.output.children.${builtins.currentSystem}.filtered;
+assert show_output.inventory.packages.output.children.someOtherSystem.children.default.derivation.name == "simple";
+true
+'
+
 # With `--all-systems`, show the packages for all systems
 nix flake show --json --all-systems > show-output.json
 # shellcheck disable=SC2016
