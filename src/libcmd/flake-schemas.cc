@@ -374,7 +374,7 @@ nlohmann::json getFlakeInventory(
     auto inventory = cache->getRoot()->getAttr("inventory");
     auto outputs = cache->getRoot()->getAttr("outputs");
 
-    auto localSystem = std::string(settings.thisSystem.get());
+    auto localSystem = std::string(evalSettings.getCurrentSystem());
 
     FutureVector futures(*state.executor);
 

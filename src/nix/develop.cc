@@ -653,7 +653,7 @@ struct CmdDevelop : Common, MixEnvironment
                 std::move(nixpkgs),
                 "bashInteractive",
                 ExtendedOutputsSpec::Default(),
-                StringSet{"nix-build"},
+                StringSet{"nix-develop"},
                 nixpkgsLockFlags,
                 std::nullopt);
 
