@@ -77,6 +77,9 @@ cat > "$flakeDir"/flake.nix <<EOF
 EOF
 
 nix flake check "$flakeDir"
+# `--eval-system` and `--system` should control the system used for flake output selection.
+expect 1 nix flake check --eval-system system-1 "$flakeDir"
+expect 1 nix flake check --system system-1 "$flakeDir"
 
 # shellcheck disable=SC2015
 checkRes=$(nix flake check --all-systems --keep-going "$flakeDir" 2>&1 && fail "nix flake check --all-systems should have failed" || true)

@@ -373,7 +373,7 @@ struct CmdFlakeCheck : FlakeCommand, MixPrintOutPaths, MixOutLinkBase, MixFlakeS
 
         lockFlags.applyNixConfig = true;
         auto flake = std::make_shared<flake::LockedFlake>(lockFlake());
-        auto localSystem = std::string(settings.thisSystem.get());
+        auto localSystem = std::string(evalSettings.getCurrentSystem());
 
         auto cache = flake_schemas::call(*state, flake, getDefaultFlakeSchemas());
 
@@ -921,7 +921,7 @@ struct CmdFlakeShow : FlakeCommand, MixJSON, MixFlakeSchemas
 
         auto state = getEvalState();
         auto flake = make_ref<flake::LockedFlake>(lockFlake());
-        auto localSystem = std::string(settings.thisSystem.get());
+        auto localSystem = std::string(evalSettings.getCurrentSystem());
 
         auto cache = flake_schemas::call(*state, flake, getDefaultFlakeSchemas());
 

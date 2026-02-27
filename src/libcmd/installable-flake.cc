@@ -30,6 +30,11 @@ static std::string showAttrPaths(EvalState & state, const std::vector<AttrPath> 
     return s;
 }
 
+static bool roleExecutesLocally(std::string_view role)
+{
+    return role == "nix-run" || role == "nix-develop" || role == "nix-fmt" || role == "nix-bundler";
+}
+
 InstallableFlake::InstallableFlake(
     SourceExprCommand * cmd,
     ref<EvalState> state,
@@ -173,7 +178,8 @@ std::vector<AttrPath> InstallableFlake::getAttrPaths(bool useDefaultAttrPath, re
             if (schema.roles.contains(role)) {
                 AttrPath attrPath{state->symbols.create(schemaName)};
                 if (schema.appendSystem)
-                    attrPath.push_back(state->symbols.create(settings.thisSystem.get()));
+                    attrPath.push_back(state->symbols.create(
+                        roleExecutesLocally(role) ? settings.thisSystem.get() : evalSettings.getCurrentSystem()));
 
                 if (useDefaultAttrPath && parsedFragment.empty()) {
                     if (schema.defaultAttrPath) {
