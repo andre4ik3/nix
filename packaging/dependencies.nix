@@ -85,19 +85,28 @@ scope: {
       });
 
   lowdown =
-    if lib.versionAtLeast pkgs.lowdown.version "2.0.2" then
-      pkgs.lowdown
+    let
+      base = pkgs.lowdown.override {
+        enableDarwinSandbox = !stdenv.hostPlatform.isDarwin;
+      };
+    in
+    if lib.versionAtLeast pkgs.lowdown.version "3.0.1" then
+      base
     else
-      pkgs.lowdown.overrideAttrs (prevAttrs: rec {
-        version = "2.0.2";
-        src = pkgs.fetchurl {
-          url = "https://kristaps.bsd.lv/lowdown/snapshots/lowdown-${version}.tar.gz";
-          hash = "sha512-cfzhuF4EnGmLJf5EGSIbWqJItY3npbRSALm+GarZ7SMU7Hr1xw0gtBFMpOdi5PBar4TgtvbnG4oRPh+COINGlA==";
+      base.overrideAttrs (prevAttrs: rec {
+        version = "3.0.1";
+        src = pkgs.fetchFromGitHub {
+          owner = "kristapsdz";
+          repo = "lowdown";
+          tag = "VERSION_3_0_1";
+          hash = "sha256-arXtRS+W4o4AIsoXPHmtfjOQpCiL59JEfLtaYVaxpw4=";
         };
         nativeBuildInputs = prevAttrs.nativeBuildInputs ++ [ pkgs.buildPackages.bmake ];
         postInstall =
-          lib.replaceStrings [ "lowdown.so.1" "lowdown.1.dylib" ] [ "lowdown.so.2" "lowdown.2.dylib" ]
-            (prevAttrs.postInstall or "");
+          if stdenv.hostPlatform.isDarwin then
+            ""
+          else
+            lib.replaceStrings [ "lowdown.so.1" ] [ "lowdown.so.3" ] (prevAttrs.postInstall or "");
       });
 
   curl = pkgs.curl.override {
