@@ -25,6 +25,8 @@
   # Configuration Options
 
   version,
+  enableSentry ? false,
+  enableOtel ? false,
 
   # Whether to link against mimalloc for malloc override.
   # Significantly improves evaluation performance on allocation-heavy
@@ -45,8 +47,9 @@
 
 let
   inherit (lib) fileset;
-  enableSentry = !stdenv.hostPlatform.isStatic;
-  withOtel = !stdenv.hostPlatform.isStatic && stdenv.buildPlatform.canExecute stdenv.hostPlatform;
+  sentrySupport = enableSentry && !stdenv.hostPlatform.isStatic;
+  withOtel =
+    enableOtel && !stdenv.hostPlatform.isStatic && stdenv.buildPlatform.canExecute stdenv.hostPlatform;
 in
 
 mkMesonExecutable (finalAttrs: {
@@ -119,16 +122,16 @@ mkMesonExecutable (finalAttrs: {
     && stdenv.cc.libcxx != null
     && stdenv.cc.libcxx.isLLVM
   ) llvmPackages.libunwind
-  ++ lib.optional enableSentry sentry-native
+  ++ lib.optional sentrySupport sentry-native
   ++ lib.optional withOtel opentelemetry-cpp;
 
   mesonFlags = [
     (lib.mesonEnable "mimalloc" withMimalloc)
     (lib.mesonBool "plugin-c-api" withPluginCApi)
-    (lib.mesonEnable "sentry" enableSentry)
+    (lib.mesonEnable "sentry" sentrySupport)
     (lib.mesonEnable "otel" withOtel)
   ]
-  ++ lib.optional enableSentry (
+  ++ lib.optional sentrySupport (
     lib.mesonOption "crashpad-handler" "${sentry-native}/bin/crashpad_handler"
   );
 
@@ -150,6 +153,7 @@ mkMesonExecutable (finalAttrs: {
 
   passthru = {
     exportsPluginCApi = withPluginCApi;
+    enableSentry = sentrySupport;
   };
 
   meta = {
