@@ -28,13 +28,13 @@
 
     sentry = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = "Whether to enable Sentry crash reporting in the `nix` executable.";
     };
 
     otel = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = "Whether to enable distributed tracing via OpenTelemetry in the `nix` executable.";
     };
 
