@@ -51,6 +51,8 @@
 }:
 
 let
+  sentrySupport = nix-cli.enableSentry or false;
+
   libs = {
     inherit
       nix-util
@@ -154,7 +156,7 @@ stdenv.mkDerivation (finalAttrs: {
           curl
           boehmgc
         ]
-        ++ lib.optional (stdenv.hostPlatform.isLinux && !stdenv.hostPlatform.isStatic) sentry-native
+        ++ lib.optional sentrySupport sentry-native
       );
     in
     ''
