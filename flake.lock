@@ -83,7 +83,7 @@
       },
       "original": {
         "type": "tarball",
-        "url": "https://flakehub.com/f/DeterminateSystems/nixpkgs-2605-mirror-staging-next/%3D0.2605.1017174"
+        "url": "https://nixpkgs.flake.andre4ik3.dev/stable/darwin"
       }
     },
     "nixpkgs-23-11": {
