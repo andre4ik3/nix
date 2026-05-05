@@ -1,0 +1,8 @@
+[Unit]
+Description=Nix Roots Daemon instance
+Documentation=man:nix3-store-roots-daemon https://nixos.org/manual
+CollectMode=inactive-or-failed
+RequiresMountsFor=@localstatedir@
+
+[Service]
+ExecStart=@bindir@/nix store roots-daemon --extra-experimental-features local-overlay-store --for-socket-activation

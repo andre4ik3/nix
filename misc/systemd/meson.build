@@ -2,6 +2,8 @@ foreach config : [
   'nix-daemon.socket',
   'nix-daemon.service',
   'nix-daemon@.service',
+  'nix-roots-daemon.socket',
+  'nix-roots-daemon@.service',
 ]
   configure_file(
     input : config + '.in',
