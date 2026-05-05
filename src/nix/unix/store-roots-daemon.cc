@@ -3,15 +3,80 @@
 #include "nix/store/local-store.hh"
 #include "nix/store/store-api.hh"
 #include "nix/store/local-gc.hh"
+#include "nix/util/environment-variables.hh"
 #include "nix/util/file-descriptor.hh"
 
+#include <fcntl.h>
 #include <thread>
 
 namespace nix {
 
+static constexpr int SD_LISTEN_FDS_START = 3;
+
+static void streamRoots(const LocalStoreConfig & localStoreConfig, AutoCloseFD remote)
+{
+    auto roots = findRuntimeRootsUnchecked(localStoreConfig);
+
+    FdSink sink(remote.get());
+
+    for (auto & [key, _] : roots) {
+        sink(localStoreConfig.printStorePath(key));
+        sink(std::string_view("\0", 1));
+    }
+
+    sink.flush();
+}
+
+static int getSocketActivationConnection()
+{
+    auto listenFds = getEnv("LISTEN_FDS");
+    if (listenFds) {
+        if (getEnv("LISTEN_PID") != std::to_string(getpid()) || listenFds != "1")
+            throw Error("unexpected systemd environment variables");
+        unix::closeOnExec(SD_LISTEN_FDS_START);
+        return SD_LISTEN_FDS_START;
+    }
+
+    if (fcntl(SD_LISTEN_FDS_START, F_GETFD) != -1)
+        return SD_LISTEN_FDS_START;
+
+    throw Error("expected socket-activated connection on file descriptor %1%", SD_LISTEN_FDS_START);
+}
+
+static void rootsDaemonLoop(const LocalStoreConfig & localStoreConfig)
+{
+    auto gcSocketPath = localStoreConfig.getRootsSocketPath();
+
+    unix::serveUnixSocket(
+        {
+            .socketPath = gcSocketPath,
+            .socketMode = 0666,
+            .activationName = "nix-roots-daemon.socket",
+        },
+        [&](AutoCloseFD remote, std::function<void()> closeListeners) {
+            std::thread([&, remote = std::move(remote)]() mutable {
+                streamRoots(localStoreConfig, std::move(remote));
+            }).detach();
+        });
+}
+
+static void rootsDaemonInstance(const LocalStoreConfig & localStoreConfig)
+{
+    streamRoots(localStoreConfig, AutoCloseFD(getSocketActivationConnection()));
+}
+
 struct CmdRootsDaemon : StoreConfigCommand
 {
-    CmdRootsDaemon() {}
+    bool socketActivatedInstance = false;
+
+    CmdRootsDaemon()
+    {
+        addFlag({
+            .longName = "for-socket-activation",
+            .description = "Handle a single socket-activated connection on file descriptor 3 and exit.",
+            .handler = {&socketActivatedInstance, true},
+        });
+    }
 
     std::string description() override
     {
@@ -38,29 +103,10 @@ struct CmdRootsDaemon : StoreConfigCommand
                 "Roots daemon only functions with a local store, not '%s'", storeConfig->getHumanReadableURI());
         }
 
-        auto gcSocketPath = localStoreConfig->getRootsSocketPath();
-
-        unix::serveUnixSocket(
-            {
-                .socketPath = gcSocketPath,
-                .socketMode = 0666,
-                .activationName = "nix-roots-daemon.socket",
-            },
-            [&](AutoCloseFD remote, std::function<void()> closeListeners) {
-                std::thread([&, remote = std::move(remote)]() mutable {
-                    auto roots = findRuntimeRootsUnchecked(*localStoreConfig);
-
-                    FdSink sink(remote.get());
-
-                    for (auto & [key, _] : roots) {
-                        sink(localStoreConfig->printStorePath(key));
-                        sink(std::string_view("\0", 1));
-                    }
-
-                    sink.flush();
-                    remote.close();
-                }).detach();
-            });
+        if (socketActivatedInstance)
+            rootsDaemonInstance(*localStoreConfig);
+        else
+            rootsDaemonLoop(*localStoreConfig);
     }
 };
 
