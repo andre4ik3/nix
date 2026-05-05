@@ -1,0 +1,12 @@
+[Unit]
+Description=Nix Roots Daemon Socket
+Before=multi-user.target
+RequiresMountsFor=@localstatedir@
+ConditionPathIsReadWrite=@localstatedir@/nix/gc-roots-socket
+
+[Socket]
+ListenStream=@localstatedir@/nix/gc-roots-socket/socket
+Accept=yes
+
+[Install]
+WantedBy=sockets.target
