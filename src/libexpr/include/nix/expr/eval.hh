@@ -74,7 +74,7 @@ public:
      * switches, since several fibers, each with their own call chain,
      * are interleaved on the same thread.
      */
-    [[gnu::tls_model("initial-exec")]] thread_local static size_t callDepth;
+    thread_local static size_t callDepth;
 
     CallDepth()
     {
@@ -1167,7 +1167,7 @@ public:
      * touch the `provenance` shared_ptr's atomic reference count), or
      * the thread's own context otherwise.
      */
-    [[gnu::tls_model("initial-exec")]] thread_local static EvalContext evalContext;
+    thread_local static EvalContext evalContext;
 
     /**
      * Create a work item that propagates the current evaluation context.

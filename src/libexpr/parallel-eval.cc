@@ -17,24 +17,24 @@ namespace nix {
 
 struct WaiterDomain;
 
-[[gnu::tls_model("initial-exec")]] thread_local bool Executor::amWorkerThread{false};
+thread_local bool Executor::amWorkerThread{false};
 
 static std::atomic<uint32_t> nextEvalThreadId{1};
-[[gnu::tls_model("initial-exec")]] thread_local uint32_t myEvalThreadId(nextEvalThreadId++);
+thread_local uint32_t myEvalThreadId(nextEvalThreadId++);
 
 /**
  * The fiber currently executing on this thread, or null if we're not
  * inside a fiber (e.g. on the main thread or in a worker's scheduler
  * loop).
  */
-[[gnu::tls_model("initial-exec")]] static thread_local Executor::Fiber * currentFiber{nullptr};
+static thread_local Executor::Fiber * currentFiber{nullptr};
 
 /**
  * The worker whose scheduler loop is running on this thread, or null
  * on non-worker threads. Only used to assert that fibers are resumed
  * by their owner.
  */
-[[gnu::tls_model("initial-exec")]] static thread_local Executor::Worker * currentWorker{nullptr};
+static thread_local Executor::Worker * currentWorker{nullptr};
 
 struct Executor::Fiber
 {
@@ -168,7 +168,7 @@ struct Executor::StackPool
  * inside the `boost::context::fiber` constructor) to `makeFiber()`:
  * the GC descriptor of the most recently allocated stack.
  */
-[[gnu::tls_model("initial-exec")]] static thread_local struct GC_stack * lastFiberGCStack{nullptr};
+static thread_local struct GC_stack * lastFiberGCStack{nullptr};
 #endif
 
 /**
