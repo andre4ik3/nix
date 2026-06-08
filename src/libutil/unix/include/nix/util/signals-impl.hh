@@ -37,7 +37,7 @@ namespace unix {
 
 extern std::atomic<bool> _isInterrupted;
 
-[[gnu::tls_model("initial-exec")]] extern thread_local std::function<bool()> interruptCheck;
+extern thread_local std::function<bool()> interruptCheck;
 
 void _interrupted();
 
