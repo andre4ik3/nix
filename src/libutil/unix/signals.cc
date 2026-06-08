@@ -15,7 +15,7 @@ void Cancelled::anchor() {}
 
 std::atomic<bool> unix::_isInterrupted = false;
 
-[[gnu::tls_model("initial-exec")]] thread_local std::function<bool()> unix::interruptCheck;
+thread_local std::function<bool()> unix::interruptCheck;
 
 void unix::_interrupted()
 {

@@ -25,7 +25,7 @@ LoggerSettings loggerSettings;
 
 static GlobalConfig::Register rLoggerSettings(&loggerSettings);
 
-[[gnu::tls_model("initial-exec")]] static thread_local ActivityId curActivity = 0;
+static thread_local ActivityId curActivity = 0;
 
 ActivityId getCurActivity()
 {
@@ -37,7 +37,7 @@ void setCurActivity(const ActivityId activityId)
     curActivity = activityId;
 }
 
-[[gnu::tls_model("initial-exec")]] static thread_local unsigned int remoteLogSourceDepth = 0;
+static thread_local unsigned int remoteLogSourceDepth = 0;
 
 RemoteLogSource::RemoteLogSource()
 {

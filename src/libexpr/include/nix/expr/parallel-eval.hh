@@ -225,7 +225,7 @@ struct Executor
      */
     bool hasBacklog();
 
-    [[gnu::tls_model("initial-exec")]] static thread_local bool amWorkerThread;
+    static thread_local bool amWorkerThread;
 };
 
 /**
