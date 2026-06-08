@@ -13,7 +13,7 @@ struct alignas(64) WaiterDomain
 
 static std::array<Sync<WaiterDomain>, 128> waiterDomains;
 
-[[gnu::tls_model("initial-exec")]] thread_local bool Executor::amWorkerThread{false};
+thread_local bool Executor::amWorkerThread{false};
 
 unsigned int Executor::getEvalCores(const EvalSettings & evalSettings)
 {
@@ -139,8 +139,8 @@ std::vector<std::future<void>> Executor::spawn(WorkItems && items)
                /dev/urandom), which adds up when spawning many work items. The
                key only needs to spread items of the same priority around the
                queue, not be cryptographically random. */
-            [[gnu::tls_model("initial-exec")]] static thread_local std::mt19937_64 rng{std::random_device{}()};
-            [[gnu::tls_model("initial-exec")]] static thread_local std::uniform_int_distribution<uint64_t> dist(
+            static thread_local std::mt19937_64 rng{std::random_device{}()};
+            static thread_local std::uniform_int_distribution<uint64_t> dist(
                 0, 1ULL << 48);
             auto key = (uint64_t(item.second) << 48) | dist(rng);
             state->queue.emplace(key, Item{.promise = std::move(promise), .work = std::move(item.first)});
@@ -206,7 +206,7 @@ static Sync<WaiterDomain> & getWaiterDomain(detail::ValueBase & v)
 }
 
 static std::atomic<uint32_t> nextEvalThreadId{1};
-[[gnu::tls_model("initial-exec")]] thread_local uint32_t myEvalThreadId(nextEvalThreadId++);
+thread_local uint32_t myEvalThreadId(nextEvalThreadId++);
 
 template<>
 ValueStorage<sizeof(void *)>::PackedPointer

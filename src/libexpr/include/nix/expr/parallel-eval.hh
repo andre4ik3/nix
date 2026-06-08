@@ -62,7 +62,7 @@ struct Executor
 
     std::vector<std::future<void>> spawn(WorkItems && items);
 
-    [[gnu::tls_model("initial-exec")]] static thread_local bool amWorkerThread;
+    static thread_local bool amWorkerThread;
 };
 
 struct FutureVector
