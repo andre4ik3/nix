@@ -171,13 +171,13 @@ diff -u \
     <(echo '{"type":"directory","entries":{"foo":{},"foo-x":{},"qux":{},"zyx":{}}}' | jq -S)
 diff -u \
     <(nix store ls --json -R "$storePath/foo/bar" --store "file://$cacheDir" | jq -S) \
-    <(echo '{"narOffset":368,"type":"regular","size":0}' | jq -S)
+    <(echo '{"executable":false,"narOffset":368,"type":"regular","size":0}' | jq -S)
 
 # Confirm that we are reading from ".ls" file by moving the nar.
 mv "$cacheDir/nar" "$cacheDir/nar.gone"
 diff -u \
     <(nix store ls --json -R "$storePath/foo/bar" --store "file://$cacheDir" | jq -S) \
-    <(echo '{"narOffset":368,"type":"regular","size":0}' | jq -S)
+    <(echo '{"executable":false,"narOffset":368,"type":"regular","size":0}' | jq -S)
 mv "$cacheDir/nar.gone" "$cacheDir/nar"
 
 # Confirm that we read the nar if the listing is missing offsets.
@@ -186,5 +186,5 @@ cp "$narls" "$narls.old"
 jq 'walk(if type == "object" then del(.narOffset) else . end)' < "$narls.old" > "$narls"
 diff -u \
     <(nix store ls --json "$storePath/foo/bar" --store "file://$cacheDir" | jq -S) \
-    <(echo '{"narOffset":368,"type":"regular","size":0}' | jq -S)
+    <(echo '{"executable":false,"narOffset":368,"type":"regular","size":0}' | jq -S)
 mv "$narls.old" "$narls"

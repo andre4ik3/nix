@@ -152,10 +152,7 @@ cp "${config_nix}" "$flakeDir/"
 
 expectStderr 0 nix flake check "$flakeDir" | grepQuiet 'running 1 flake check'
 
-# FIXME: error code 100 doesn't get propagated from the daemon.
-if ! isTestOnNixOS && $NIX_REMOTE != daemon; then
-    expectStderr 100 nix flake check --build-all "$flakeDir" | grepQuiet 'Cannot build.*bad'
-fi
+expectStderr 1 nix flake check --build-all "$flakeDir" | grepQuiet 'Cannot build.*bad'
 
 # Test that `nix flake check --print-out-paths` produces the same out path as `nix build --print-out-paths`
 outPath=$(nix flake check "$flakeDir" --print-out-paths)
@@ -163,10 +160,10 @@ outPathBuild=$(nix build "${flakeDir}#checks.$system.foo" --print-out-paths --no
 [[ "$outPath" = "$outPathBuild" ]] || fail "out paths from flake check and build don't match"
 
 # Test out links
-! test -e result || fail "unexpected out link result found"
-nix flake check "$flakeDir" --out-link result
-test -e result || fail "out link result not found"
-rm result
+! test -e "$TEST_ROOT/result" || fail "unexpected out link result found"
+nix flake check "$flakeDir" --out-link "$TEST_ROOT/result"
+test -e "$TEST_ROOT/result" || fail "out link result not found"
+rm "$TEST_ROOT/result"
 
 cat > "$flakeDir"/flake.nix <<EOF
 {
@@ -179,10 +176,7 @@ cat > "$flakeDir"/flake.nix <<EOF
 }
 EOF
 
-# FIXME: error code 100 doesn't get propagated from the daemon.
-if ! isTestOnNixOS && $NIX_REMOTE != daemon; then
-    expectStderr 100 nix flake check "$flakeDir" | grepQuiet 'builder failed with exit code 1'
-fi
+expectStderr 1 nix flake check "$flakeDir" | grepQuiet 'builder failed with exit code 1'
 
 # Ensure non-substitutable (read: usually failed) checks are actually run
 # https://github.com/NixOS/nix/pull/13574

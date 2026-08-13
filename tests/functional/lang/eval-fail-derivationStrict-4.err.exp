@@ -9,3 +9,6 @@ error:
          whose name attribute is located at /pwd/lang/eval-fail-derivationStrict-4.nix:1:29
 
        error: required attribute 'builder' missing
+
+       note: trace involved the following derivations:
+       derivation 'foo'
