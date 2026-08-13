@@ -1,11 +1,4 @@
 error:
-       … while calling the 'getAttr' builtin
-         at «nix-internal»/derivation-internal.nix:51:17:
-           50|     value = commonAttrs // {
-           51|       outPath = builtins.getAttr outputName strict;
-             |                 ^
-           52|       drvPath = strict.drvPath;
-
        … while calling the 'derivationStrict' builtin
          at «nix-internal»/derivation-internal.nix:38:12:
            37|
@@ -25,13 +18,6 @@ error:
 
        … while evaluating list element at index 0
 
-       … while calling the 'getAttr' builtin
-         at «nix-internal»/derivation-internal.nix:51:17:
-           50|     value = commonAttrs // {
-           51|       outPath = builtins.getAttr outputName strict;
-             |                 ^
-           52|       drvPath = strict.drvPath;
-
        … while calling the 'derivationStrict' builtin
          at «nix-internal»/derivation-internal.nix:38:12:
            37|
@@ -48,13 +34,6 @@ error:
            18|     libtrans = transitive-dependency;
              |     ^
            19|   };
-
-       … while calling the 'getAttr' builtin
-         at «nix-internal»/derivation-internal.nix:51:17:
-           50|     value = commonAttrs // {
-           51|       outPath = builtins.getAttr outputName strict;
-             |                 ^
-           52|       drvPath = strict.drvPath;
 
        … while calling the 'derivationStrict' builtin
          at «nix-internal»/derivation-internal.nix:38:12:

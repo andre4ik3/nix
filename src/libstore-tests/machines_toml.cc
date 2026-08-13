@@ -12,9 +12,9 @@ using testing::Field;
 using testing::HasSubstr;
 using testing::SizeIs;
 
-using namespace nix;
+namespace nix {
 
-MATCHER_P(AuthorityMatches, authority, "")
+MATCHER_P(TOMLAuthorityMatches, authority, "")
 {
     *result_listener << "where the authority of " << arg.render() << " is " << authority;
     auto * generic = std::get_if<StoreReference::Specified>(&arg.variant);
@@ -68,8 +68,8 @@ TEST(machines, getMachinesTOMLMultipleMachines)
 
     Machines actual = getMachines();
     ASSERT_THAT(actual, SizeIs(2));
-    EXPECT_THAT(actual, Contains(Field(&Machine::storeUri, AuthorityMatches("nix@scratchy.labs.cs.uu.nl"))));
-    EXPECT_THAT(actual, Contains(Field(&Machine::storeUri, AuthorityMatches("nix@itchy.labs.cs.uu.nl"))));
+    EXPECT_THAT(actual, Contains(Field(&Machine::storeUri, TOMLAuthorityMatches("nix@scratchy.labs.cs.uu.nl"))));
+    EXPECT_THAT(actual, Contains(Field(&Machine::storeUri, TOMLAuthorityMatches("nix@itchy.labs.cs.uu.nl"))));
 }
 
 TEST(machines, getMachinesTOMLWithCorrectCompleteSingleBuilder)
@@ -92,7 +92,7 @@ TEST(machines, getMachinesTOMLWithCorrectCompleteSingleBuilder)
 
     Machines actual = getMachines();
     ASSERT_THAT(actual, SizeIs(1));
-    EXPECT_THAT(actual[0], Field(&Machine::storeUri, AuthorityMatches("nix@scratchy.labs.cs.uu.nl")));
+    EXPECT_THAT(actual[0], Field(&Machine::storeUri, TOMLAuthorityMatches("nix@scratchy.labs.cs.uu.nl")));
     EXPECT_THAT(actual[0], Field(&Machine::systemTypes, ElementsAre("i686-linux")));
     EXPECT_THAT(actual[0], Field(&Machine::sshKey, Eq("/home/nix/.ssh/id_scratchy_auto")));
     EXPECT_THAT(actual[0], Field(&Machine::maxJobs, Eq(8)));
@@ -132,7 +132,7 @@ TEST(machines, getMachinesTOMLWithMultiOptions)
 
     Machines actual = getMachines();
     ASSERT_THAT(actual, SizeIs(1));
-    EXPECT_THAT(actual[0], Field(&Machine::storeUri, AuthorityMatches("nix@scratchy.labs.cs.uu.nl")));
+    EXPECT_THAT(actual[0], Field(&Machine::storeUri, TOMLAuthorityMatches("nix@scratchy.labs.cs.uu.nl")));
     EXPECT_THAT(actual[0], Field(&Machine::systemTypes, ElementsAre("Arch1", "Arch2")));
     EXPECT_THAT(actual[0], Field(&Machine::supportedFeatures, ElementsAre("SupportedFeature1", "SupportedFeature2")));
     EXPECT_THAT(actual[0], Field(&Machine::mandatoryFeatures, ElementsAre("MandatoryFeature1", "MandatoryFeature2")));
@@ -250,7 +250,9 @@ TEST(machines, getMachinesTOMLOneDisabled)
 
     auto actual = getMachines();
     ASSERT_THAT(actual, SizeIs(1));
-    EXPECT_THAT(actual[0], Field(&Machine::storeUri, AuthorityMatches("test2")));
+    EXPECT_THAT(actual[0], Field(&Machine::storeUri, TOMLAuthorityMatches("test2")));
 }
 
 #undef EXPECT_MESSAGE_THROW
+
+} // namespace nix

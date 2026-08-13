@@ -789,7 +789,7 @@ void LocalStore::collectGarbage(const GCOptions & options, GCResults & results)
 
                     for (auto & i : pathsToDelete.paths) {
                         maybeDeleteReferrersClosure(i);
-                        if (options.action == GCOptions::gcDeleteSpecific && isValidPath(i))
+                        if (options.action == GCOptions::gcDeleteSpecific && alive.contains(i))
                             kept.insert(printStorePath(i));
                     }
                 },

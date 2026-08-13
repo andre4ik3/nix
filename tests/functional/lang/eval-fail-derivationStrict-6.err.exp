@@ -11,3 +11,6 @@ error:
        … while evaluating the `__ignoreNulls` attribute passed to builtins.derivationStrict
 
        error: expected a Boolean but found an integer: 15
+
+       note: trace involved the following derivations:
+       derivation 'foo'

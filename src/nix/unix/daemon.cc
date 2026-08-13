@@ -507,8 +507,8 @@ static void daemonInstance(std::optional<TrustedFlag> forceTrustClientOpt, char 
                Build cgroups must be created as siblings of our
                sub-cgroup, not inside it, so use our parent as the root
                cgroup. */
-            auto current = getCurrentCgroup();
-            setRootCgroup(current.parent().value_or(current));
+            auto current = linux::getCurrentCgroup();
+            linux::setRootCgroup(current.parent().value_or(current));
         }
     }
 #endif
@@ -541,8 +541,12 @@ static void daemonInstance(std::optional<TrustedFlag> forceTrustClientOpt, char 
     if (!launchedByManager && setsid() == -1)
         throw SysError("creating a new session");
 
-    processConnection(
-        openUncachedStore(AllowDaemon::Disallow), FdSource(connectionFd), FdSink(connectionFd), trusted, NotRecursive);
+    daemon::processConnection(
+        openUncachedStore(AllowDaemon::Disallow),
+        FdSource(connectionFd),
+        FdSink(connectionFd),
+        trusted,
+        daemon::NotRecursive);
 }
 
 /**

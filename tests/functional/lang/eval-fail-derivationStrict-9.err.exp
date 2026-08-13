@@ -16,3 +16,6 @@ error:
             5| }
 
        error: cannot coerce a set to a string: { }
+
+       note: trace involved the following derivations:
+       derivation 'foo'

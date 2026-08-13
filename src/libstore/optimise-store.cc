@@ -247,7 +247,8 @@ void LocalStore::optimisePath_(
        its timestamp back to 0. */
     MakeReadOnly makeReadOnly(mustToggle ? dirOfPath : std::filesystem::path{});
 
-    std::filesystem::path tempLink = makeTempPath(config->realStoreDir.get() + "/", std::nullopt);
+    std::filesystem::path tempLink =
+        makeTempPath(std::filesystem::path{config->realStoreDir.get()} / "", std::nullopt);
 
     try {
         std::filesystem::create_hard_link(linkPath, tempLink);
