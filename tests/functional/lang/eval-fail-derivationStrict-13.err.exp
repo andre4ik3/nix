@@ -16,3 +16,6 @@ error:
             6| }
 
        error: derivation cannot have an empty set of outputs
+
+       note: trace involved the following derivations:
+       derivation 'foo'

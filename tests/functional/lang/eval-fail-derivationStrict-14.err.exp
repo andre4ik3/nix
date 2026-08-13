@@ -16,3 +16,6 @@ error:
             6| }
 
        error: invalid derivation output name 'drvPath'
+
+       note: trace involved the following derivations:
+       derivation 'foo'

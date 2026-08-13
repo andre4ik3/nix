@@ -1289,18 +1289,18 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
             return "(unable to resolve edge in output graph)";
 
         auto fromHostPath = realPathInHost(store.printStorePath(*fromPath));
-        PosixSourceAccessor accessor{std::move(fromHostPath)};
+        auto accessor = makeFSSourceAccessor(std::move(fromHostPath));
 
         std::optional<std::string> firstHit;
-        scanForReferencesDeep(accessor, CanonPath::root, {*toPath}, [&](FileRefScanResult result) {
+        scanForReferencesDeep(*accessor, CanonPath::root, {*toPath}, [&](FileRefScanResult result) {
             if (firstHit)
                 return;
 
             auto p = result.filePath.isRoot() ? result.filePath.abs() : result.filePath.rel();
-            auto st = accessor.lstat(result.filePath);
+            auto st = accessor->lstat(result.filePath);
 
             if (st.type == SourceAccessor::Type::tRegular) {
-                auto contents = static_cast<SourceAccessor &>(accessor).readFile(result.filePath);
+                auto contents = accessor->readFile(result.filePath);
                 std::string hash(toPath->hashPart());
                 if (auto pos = contents.find(hash); pos != std::string::npos) {
                     size_t margin = 32;
@@ -1309,7 +1309,7 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
                     firstHit = fmt("%s: …%s…", p, hit);
                 }
             } else if (st.type == SourceAccessor::Type::tSymlink) {
-                auto target = accessor.readLink(result.filePath);
+                auto target = accessor->readLink(result.filePath);
                 std::string hash(toPath->hashPart());
                 if (target.find(hash) != std::string::npos)
                     firstHit = fmt("%s -> %s", p, target);
