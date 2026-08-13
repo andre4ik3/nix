@@ -16,3 +16,6 @@ error:
             6|     "out"
 
        error: duplicate derivation output 'out'
+
+       note: trace involved the following derivations:
+       derivation 'foo'

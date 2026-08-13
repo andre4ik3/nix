@@ -28,7 +28,7 @@ test -e "$outPath"
 test -e "$input2"
 test -e "$input0"
 
-nix store delete --unlink --delete-closure "$resultPath"
+nix store delete --unlink --recursive "$resultPath"
 test ! -e "$resultPath"
 test ! -e "$outPath"
 test ! -e "$input2"

@@ -16,3 +16,6 @@ error:
             7| }
 
        error: expected a Boolean but found a string: "true"
+
+       note: trace involved the following derivations:
+       derivation 'foo'

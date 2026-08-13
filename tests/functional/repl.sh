@@ -340,9 +340,8 @@ filterReplOutput () {
     | sed \
       -e "s@$testDir@/path/to/tests/functional@g" \
       -e "s@$testDirNoUnderscores@/path/to/tests/functional@g" \
-      -e 's/^Nix .*/Nix <nix version>/' \
-      -e "/Added [0-9]* variables/{s@ [0-9]* @ <number omitted> @;n;d}" \
-      -e '/\.\.\. and [0-9]* more; view with :ll/d' \
+      -e 's/^Nix .* debugger$/Nix <nix version> debugger/' \
+      -e '/ debugger$/! s/^Nix .*/Nix <nix version>/' \
     | grep -vF $'warning: you don\'t have Internet access; disabling some network-dependent features' \
     ;
 }

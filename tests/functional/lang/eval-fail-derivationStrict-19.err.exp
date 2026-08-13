@@ -16,3 +16,6 @@ error:
             7| }
 
        error: expected a list but found a string: "foo"
+
+       note: trace involved the following derivations:
+       derivation 'foo'

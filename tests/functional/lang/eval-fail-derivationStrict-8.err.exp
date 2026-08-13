@@ -16,3 +16,6 @@ error:
             5| }
 
        error: invalid value 'custom' for 'outputHashMode' attribute
+
+       note: trace involved the following derivations:
+       derivation 'foo'

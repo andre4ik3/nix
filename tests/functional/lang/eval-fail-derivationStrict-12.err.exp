@@ -16,3 +16,6 @@ error:
             4|   __structuredAttrs = true;
 
        error: expected a list but found a string: "out"
+
+       note: trace involved the following derivations:
+       derivation 'foo'

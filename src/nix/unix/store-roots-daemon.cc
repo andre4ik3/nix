@@ -11,7 +11,7 @@
 
 namespace nix {
 
-static constexpr int SD_LISTEN_FDS_START = 3;
+static constexpr int ROOTS_LISTEN_FD = 3;
 
 static void streamRoots(const LocalStoreConfig & localStoreConfig, AutoCloseFD remote)
 {
@@ -27,20 +27,20 @@ static void streamRoots(const LocalStoreConfig & localStoreConfig, AutoCloseFD r
     sink.flush();
 }
 
-static int getSocketActivationConnection()
+static int getRootsSocketActivationConnection()
 {
     auto listenFds = getEnv("LISTEN_FDS");
     if (listenFds) {
         if (getEnv("LISTEN_PID") != std::to_string(getpid()) || listenFds != "1")
             throw Error("unexpected systemd environment variables");
-        unix::closeOnExec(SD_LISTEN_FDS_START);
-        return SD_LISTEN_FDS_START;
+        unix::closeOnExec(ROOTS_LISTEN_FD);
+        return ROOTS_LISTEN_FD;
     }
 
-    if (fcntl(SD_LISTEN_FDS_START, F_GETFD) != -1)
-        return SD_LISTEN_FDS_START;
+    if (fcntl(ROOTS_LISTEN_FD, F_GETFD) != -1)
+        return ROOTS_LISTEN_FD;
 
-    throw Error("expected socket-activated connection on file descriptor %1%", SD_LISTEN_FDS_START);
+    throw Error("expected socket-activated connection on file descriptor %1%", ROOTS_LISTEN_FD);
 }
 
 static void rootsDaemonLoop(const LocalStoreConfig & localStoreConfig)
@@ -62,7 +62,7 @@ static void rootsDaemonLoop(const LocalStoreConfig & localStoreConfig)
 
 static void rootsDaemonInstance(const LocalStoreConfig & localStoreConfig)
 {
-    streamRoots(localStoreConfig, AutoCloseFD(getSocketActivationConnection()));
+    streamRoots(localStoreConfig, AutoCloseFD(getRootsSocketActivationConnection()));
 }
 
 struct CmdRootsDaemon : StoreConfigCommand
