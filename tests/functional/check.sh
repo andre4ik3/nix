@@ -86,8 +86,8 @@ test_custom_temp_dir() {
 }
 test_custom_temp_dir
 
-test_shell_preserves_tmpdir() {
-  # Ensure interactive-shell commands do not overwrite TMPDIR with temp-dir.
+test_shell_preserves_tmpdir_root() {
+  # Ensure interactive-shell commands use the environment's TMPDIR rather than temp-dir.
   local envTempDir="$TEST_ROOT/shell-temp-dir-env"
   mkdir "$envTempDir"
   local settingTempDir="$TEST_ROOT/shell-temp-dir-setting"
@@ -99,7 +99,8 @@ test_shell_preserves_tmpdir() {
   local output
   # shellcheck disable=SC2016 # $TMPDIR must expand in the command shell.
   output=$(TMPDIR="$envTempDir" NIX_BUILD_SHELL=$SHELL nix-shell -E "$expr" --option temp-dir "$settingTempDir" --command 'echo $TMPDIR' 2> "$TEST_ROOT/log")
-  [[ $output = "$envTempDir" ]]
+  [[ $output = "$envTempDir"/nix-shell-* ]]
+  [[ ! -e $output ]]
 
   # shellcheck disable=SC2016 # $TMPDIR must expand in the command shell.
   output=$(TMPDIR="$envTempDir" nix develop --impure -E "$expr" --option temp-dir "$settingTempDir" --command bash -c 'echo $TMPDIR' 2> "$TEST_ROOT/log" || true)
@@ -109,7 +110,7 @@ test_shell_preserves_tmpdir() {
   output=$(TMPDIR="$envTempDir" nix shell --impure -E "$expr" --option temp-dir "$settingTempDir" --command bash -c 'echo $TMPDIR' 2> "$TEST_ROOT/log" || true)
   [[ -z $output || $output != "$settingTempDir"/* ]]
 }
-test_shell_preserves_tmpdir
+test_shell_preserves_tmpdir_root
 
 nix-build check.nix -A deterministic --argstr checkBuildId "$checkBuildId" \
     --no-out-link 2> "$TEST_ROOT/log"
