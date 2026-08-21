@@ -538,6 +538,9 @@ static void main_nix_build(int argc, char ** argv)
         if (dryRun)
             return;
 
+        auto shellTmpRoot = getEnvNonEmpty("TMPDIR").value_or("/tmp");
+        AutoDelete shellTmpDir(createTempDir(shellTmpRoot, "nix-shell", 0700));
+
         if (shellDrv) {
             auto shellDrvOutputs = deepQueryPartialDerivationOutputMap(*store, shellDrv.value(), &*evalStore);
             shell = store->printStorePath(shellDrvOutputs.at("out").value()) + "/bin/bash";
@@ -562,8 +565,8 @@ static void main_nix_build(int argc, char ** argv)
             env["__ETC_PROFILE_SOURCED"] = "1";
         }
 
-        auto shellTmp = getEnvNonEmpty("TMPDIR").value_or("/tmp");
-        env["NIX_BUILD_TOP"] = env["TMPDIR"] = env["TEMPDIR"] = env["TMP"] = env["TEMP"] = shellTmp;
+        env["NIX_BUILD_TOP"] = env["TMPDIR"] = env["TEMPDIR"] = env["TMP"] = env["TEMP"] =
+            shellTmpDir.path().string();
         env["NIX_STORE"] = store->storeDir;
         env["NIX_BUILD_CORES"] =
             fmt("%d",
@@ -630,22 +633,22 @@ static void main_nix_build(int argc, char ** argv)
         auto tz = getEnv("TZ");
         auto tzExport = tz ? "export TZ=" + escapeShellArgAlways(*tz) + "; " : "";
         std::string rc = fmt(
-                (R"(_nix_shell_clean_tmpdir() { command rm -rf %1%; };)"s
+                (R"(_nix_shell_clean_tmpdir() { command rm -rf %1% %2%; };)"s
                   "trap _nix_shell_clean_tmpdir EXIT; "
                   "exitHooks+=(_nix_shell_clean_tmpdir); "
                   "failureHooks+=(_nix_shell_clean_tmpdir); ") +
                 (pure ? "" : "[ -n \"$PS1\" ] && [ -e ~/.bashrc ] && source ~/.bashrc;") +
-                "%2%"
+                "%3%"
                 // always clear PATH.
                 // when nix-shell is run impure, we rehydrate it with the `p=$PATH` above
                 "unset PATH;"
                 "dontAddDisableDepTrack=1;\n"
                 + structuredAttrsRC +
                 "\n[ -e $stdenv/setup ] && source $stdenv/setup; "
-                "%3%"
-                "PATH=%4%:\"$PATH\"; "
-                "SHELL=%5%; "
-                "BASH=%5%; "
+                "%4%"
+                "PATH=%5%:\"$PATH\"; "
+                "SHELL=%6%; "
+                "BASH=%6%; "
                 "set +e; "
                 R"s([ -n "$PS1" -a -z "$NIX_SHELL_PRESERVE_PROMPT" ] && )s" +
                 (isRootUser()
@@ -654,10 +657,11 @@ static void main_nix_build(int argc, char ** argv)
                 "if [ \"$(type -t runHook)\" = function ]; then runHook shellHook; fi; "
                 "unset NIX_ENFORCE_PURITY; "
                 "shopt -u nullglob; "
-                "unset TZ; %6%"
+                "unset TZ; %7%"
                 "shopt -s execfail;"
-                "%7%",
+                "%8%",
                 escapeShellArgAlways(tmpDir.path().string()),
+                escapeShellArgAlways(shellTmpDir.path().string()),
                 (pure ? "" : "p=$PATH; "),
                 (pure ? "" : "PATH=$PATH:$p; unset p; "),
                 escapeShellArgAlways(std::filesystem::path(*shell).parent_path().string()),
