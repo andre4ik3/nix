@@ -32,15 +32,18 @@ output=$(nix-shell --pure --keep SELECTED_IMPURE_VAR "$shellDotNix" -A shellDrv 
 
 [ "$output" = " - foo - bar - baz" ]
 
-# test NIX_BUILD_TOP
+# Test that shell temporary files use a private directory under TMPDIR.
 testTmpDir=$TEST_ROOT/tmp-dir
 mkdir -p "$testTmpDir"
-# shellcheck disable=SC2016
-output=$(TMPDIR="$testTmpDir" nix-shell --pure "$shellDotNix" -A shellDrv --run 'echo $NIX_BUILD_TOP')
-[[ "$output" == "$testTmpDir" ]] || {
-    echo "expected $output == $testTmpDir" >&2
+mkdir "$testTmpDir/env-vars"
+findBin=$(type -P find)
+output=$(TMPDIR="$testTmpDir" nix-shell --pure "$shellDotNix" -A shellDrv \
+    --run ": > \"\$NIX_BUILD_TOP/env-vars\"; \"$findBin\" \"\$NIX_BUILD_TOP\" -prune -perm 0700")
+[[ "$output" == "$testTmpDir"/nix-shell-* ]] || {
+    echo "expected $output under $testTmpDir" >&2
     exit 1
 }
+[[ -d "$testTmpDir/env-vars" ]]
 
 # Test nix-shell on a .drv
 # shellcheck disable=SC2016
