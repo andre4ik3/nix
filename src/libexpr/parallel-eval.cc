@@ -297,6 +297,11 @@ Executor::Executor(const EvalSettings & evalSettings)
     }))
 {
     debug("executor using %d threads and at most %d fibers per thread", evalCores, maxFibersPerWorker);
+    createWorkers();
+}
+
+void Executor::createWorkers()
+{
     // FIXME: create worker threads on demand?
     for (size_t n = 0; n < evalCores; ++n)
         try {
@@ -310,6 +315,11 @@ Executor::Executor(const EvalSettings & evalSettings)
 }
 
 Executor::~Executor()
+{
+    stopWorkers();
+}
+
+void Executor::stopWorkers()
 {
     {
         auto state(state_.lock());
@@ -336,6 +346,17 @@ Executor::~Executor()
 
     /* Fail any work items that were queued after the workers exited. */
     failQueuedItems();
+
+    auto state(state_.lock());
+    workers.clear();
+}
+
+void Executor::restart()
+{
+    stopWorkers();
+
+    quit = false;
+    createWorkers();
 }
 
 /**
@@ -832,10 +853,9 @@ ValueStorage<sizeof(void *)>::waitOnThunk(EvalState & state, PackedPointer expec
         auto p0_ = p0.load(std::memory_order_acquire);
         auto pd = static_cast<PrimaryDiscriminator>(p0_ & discriminatorMask);
 
-        /* If the value has been finalized in the meantime (i.e. is no
-           longer pending), we're done. */
+        /* If the value has been finalized, restored, or claimed again after
+           an interrupted evaluation, let the caller observe the new state. */
         if (pd != pdAwaited) {
-            assert(pd != pdThunk && pd != pdPending);
             return p0_;
         }
     } else {
@@ -846,11 +866,10 @@ ValueStorage<sizeof(void *)>::waitOnThunk(EvalState & state, PackedPointer expec
                 pdAwaited | (threadId << discriminatorBits),
                 std::memory_order_acquire,
                 std::memory_order_acquire)) {
-            /* If the value has been finalized in the meantime (i.e. is
-               no longer pending), we're done. */
+            /* If the value has been finalized, restored, or claimed again after
+               an interrupted evaluation, let the caller observe the new state. */
             auto pd = static_cast<PrimaryDiscriminator>(p0_ & discriminatorMask);
             if (pd != pdAwaited) {
-                assert(pd != pdThunk && pd != pdPending);
                 return p0_;
             }
             /* The value was already in the "waited on" state, so we're
@@ -910,7 +929,6 @@ ValueStorage<sizeof(void *)>::waitOnThunk(EvalState & state, PackedPointer expec
         auto p0_ = p0.load(std::memory_order_acquire);
         auto pd = static_cast<PrimaryDiscriminator>(p0_ & discriminatorMask);
         if (pd != pdAwaited) {
-            assert(pd != pdThunk && pd != pdPending);
             auto now2 = std::chrono::steady_clock::now();
             state.microsecondsWaiting += std::chrono::duration_cast<std::chrono::microseconds>(now2 - now1).count();
             state.currentlyWaiting--;

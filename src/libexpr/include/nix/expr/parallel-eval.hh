@@ -122,9 +122,9 @@ struct Executor
     Sync<State> state_;
 
     /**
-     * The worker threads. Only mutated in the constructor; the
-     * `Worker` objects have stable addresses (fibers refer to their
-     * owner by reference).
+     * The worker threads. Replaced by `restart()` only after all
+     * fibers have drained. While fibers exist, their `Worker` owners
+     * have stable addresses.
      */
     std::vector<std::unique_ptr<Worker>> workers;
 
@@ -150,7 +150,17 @@ struct Executor
 
     ~Executor();
 
+    void restart();
+
+private:
+
+    void createWorkers();
+
+    void stopWorkers();
+
     void createWorker();
+
+public:
 
     void worker(Worker & self);
 
@@ -211,6 +221,8 @@ struct Executor
      * shutdown/interrupt.
      */
     void failQueuedItems();
+
+public:
 
     using WorkItems = std::vector<std::pair<Executor::work_t, uint8_t>>;
 
