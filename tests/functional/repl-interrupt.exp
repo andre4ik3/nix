@@ -1,0 +1,97 @@
+#!/usr/bin/expect -f
+
+set timeout 15
+
+proc expect_prompt {} {
+    expect {
+        "nix-repl> " { }
+        timeout {
+            puts stderr "timed out waiting for the REPL prompt"
+            exit 1
+        }
+        eof {
+            puts stderr "REPL exited before displaying a prompt"
+            exit 1
+        }
+    }
+}
+
+spawn -noecho $env(NIX_BIN) repl --offline --eval-cores 1
+expect_prompt
+send "x = \[ (builtins.trace \"INTERRUPT-THUNK-START\" (builtins.hashString \"sha256\" (builtins.toJSON (builtins.listToAttrs (builtins.genList (n: { name = toString n; value = n; }) 10000))))) \]\r"
+expect_prompt
+send "x\r"
+expect "INTERRUPT-THUNK-START"
+send "\003"
+expect "interrupted by the user"
+expect_prompt
+send "x\r"
+expect {
+    "interrupted by the user" {
+        puts stderr "an interrupted thunk remained poisoned"
+        exit 1
+    }
+    "INTERRUPT-THUNK-START" { }
+    timeout {
+        puts stderr "timed out retrying an interrupted thunk"
+        exit 1
+    }
+}
+expect {
+    "error:" {
+        puts stderr "retrying an interrupted thunk failed"
+        exit 1
+    }
+    "nix-repl> " { }
+}
+
+send "y = builtins.trace \"MEMOIZED-ERROR\" (throw \"boom\")\r"
+expect_prompt
+send "y\r"
+expect "trace: MEMOIZED-ERROR"
+expect "error: boom"
+expect_prompt
+send "y\r"
+expect {
+    "trace: MEMOIZED-ERROR" {
+        puts stderr "an ordinary evaluation error was not memoized"
+        exit 1
+    }
+    "error: boom" { }
+}
+expect_prompt
+send ":q\r"
+expect eof
+
+spawn -noecho $env(NIX_BIN) repl --offline --eval-cores 2 --extra-experimental-features parallel-eval
+expect_prompt
+send "inner = builtins.listToAttrs (builtins.genList (n: { name = toString n; value = n; }) 10000)\r"
+expect_prompt
+send "x = \[ (builtins.toJSON { a = builtins.trace \"INTERRUPT-WORKER-START\" (builtins.toJSON inner); }) \]\r"
+expect_prompt
+send "x\r"
+expect "INTERRUPT-WORKER-START"
+send "\003"
+expect "interrupted by the user"
+expect_prompt
+send "builtins.parallel \[ (builtins.trace \"INTERRUPT-WORKER-RECOVERED\" 1) \] true\r"
+
+set sawTrace 0
+set sawPrompt 0
+set timeout 5
+while {!$sawTrace || !$sawPrompt} {
+    expect {
+        "trace: INTERRUPT-WORKER-RECOVERED" { set sawTrace 1 }
+        "nix-repl> " { set sawPrompt 1 }
+        timeout {
+            puts stderr "the evaluator worker pool did not recover after an interrupt"
+            exit 1
+        }
+        eof {
+            puts stderr "REPL exited while checking evaluator worker recovery"
+            exit 1
+        }
+    }
+}
+send ":q\r"
+expect eof

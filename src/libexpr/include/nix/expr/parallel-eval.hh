@@ -54,9 +54,19 @@ struct Executor
 
     ~Executor();
 
+    void restart();
+
+private:
+
+    void createWorkers(State & state);
+
+    void stopWorkers();
+
     void createWorker(State & state);
 
     void worker();
+
+public:
 
     using WorkItems = std::vector<std::pair<Executor::work_t, uint8_t>>;
 

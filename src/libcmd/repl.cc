@@ -40,6 +40,7 @@ extern "C" {
 #include "nix/store/local-fs-store.hh"
 #include "nix/store/store-open.hh"
 #include "nix/expr/print.hh"
+#include "nix/expr/parallel-eval.hh"
 #include "nix/util/ref.hh"
 #include "nix/expr/value.hh"
 
@@ -289,6 +290,7 @@ ReplExitStatus NixRepl::mainLoop()
             printMsg(lvlError, e.msg());
         } catch (Interrupted & e) {
             printMsg(lvlError, e.msg());
+            state->executor->restart();
         }
 
         // We handled the current input fully, so we should clear it

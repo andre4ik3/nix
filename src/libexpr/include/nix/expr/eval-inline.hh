@@ -5,6 +5,7 @@
 #include "nix/expr/eval.hh"
 #include "nix/expr/eval-error.hh"
 #include "nix/expr/eval-settings.hh"
+#include "nix/util/signals.hh"
 #include <exception>
 
 namespace nix {
@@ -103,16 +104,18 @@ template<std::size_t ptrSize>
 void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptrSize>>>::force(
     EvalState & state, PosIdx pos)
 {
+retry:
     auto p0_ = p0.load(std::memory_order_acquire);
 
     auto pd = static_cast<PrimaryDiscriminator>(p0_ & discriminatorMask);
 
     if (pd == pdThunk) {
+        // The value we get here is only valid if we can set the thunk
+        // to pending. Keep it around in case evaluation is interrupted.
+        auto thunkP0 = p0_;
+        auto p1_ = p1;
+        bool ownsThunk = false;
         try {
-            // The value we get here is only valid if we can set the
-            // thunk to pending.
-            auto p1_ = p1;
-
             // Atomically set the thunk to "pending".
             if (!p0.compare_exchange_strong(
                     p0_,
@@ -124,12 +127,16 @@ void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptr
                     // The thunk is already "pending" or "awaited", so
                     // we need to wait for it.
                     p0_ = waitOnThunk(state, p0_);
+                    pd = static_cast<PrimaryDiscriminator>(p0_ & discriminatorMask);
+                    if (pd == pdThunk || pd == pdPending || pd == pdAwaited)
+                        goto retry;
                     goto done;
                 }
                 assert(pd != pdThunk);
                 // Another thread finished this thunk, no need to wait.
                 goto done;
             }
+            ownsThunk = true;
 
             bool isApp = p1_ & discriminatorMask;
             if (isApp) {
@@ -141,6 +148,10 @@ void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptr
                 auto expr = untagPointer<Expr *>(p1_);
                 expr->eval(state, *env, (Value &) *this);
             }
+        } catch (const Interrupted &) {
+            if (ownsThunk)
+                finish(thunkP0, p1_);
+            throw;
         } catch (...) {
             state.tryFixupBlackHolePos((Value &) *this, pos);
             setStorage(new Value::Failed{.ex = std::current_exception()});
@@ -148,8 +159,12 @@ void ValueStorage<ptrSize, std::enable_if_t<detail::useBitPackedValueStorage<ptr
         }
     }
 
-    else if (pd == pdPending || pd == pdAwaited)
+    else if (pd == pdPending || pd == pdAwaited) {
         p0_ = waitOnThunk(state, p0_);
+        pd = static_cast<PrimaryDiscriminator>(p0_ & discriminatorMask);
+        if (pd == pdThunk || pd == pdPending || pd == pdAwaited)
+            goto retry;
+    }
 
 done:
     if (InternalType(p0_ & 0xff) == tFailed)
