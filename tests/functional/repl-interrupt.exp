@@ -76,22 +76,18 @@ expect "interrupted by the user"
 expect_prompt
 send "builtins.parallel \[ (builtins.trace \"INTERRUPT-WORKER-RECOVERED\" 1) \] true\r"
 
-set sawTrace 0
-set sawPrompt 0
 set timeout 5
-while {!$sawTrace || !$sawPrompt} {
-    expect {
-        "trace: INTERRUPT-WORKER-RECOVERED" { set sawTrace 1 }
-        "nix-repl> " { set sawPrompt 1 }
-        timeout {
-            puts stderr "the evaluator worker pool did not recover after an interrupt"
-            exit 1
-        }
-        eof {
-            puts stderr "REPL exited while checking evaluator worker recovery"
-            exit 1
-        }
+expect {
+    -notransfer "trace: INTERRUPT-WORKER-RECOVERED" { }
+    timeout {
+        puts stderr "the evaluator worker pool did not recover after an interrupt"
+        exit 1
+    }
+    eof {
+        puts stderr "REPL exited while checking evaluator worker recovery"
+        exit 1
     }
 }
+expect_prompt
 send ":q\r"
 expect eof
