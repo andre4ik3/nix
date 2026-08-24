@@ -25,6 +25,8 @@ import $testDir/undefined-variable.nix
 
 TODO_NixOS
 
+NIX_BIN="$(type -P nix)" "$(type -P expect)" "$testDir/repl-interrupt.exp"
+
 # FIXME: repl tests fail on systems with stack limits
 stack_ulimit="$(ulimit -Hs)"
 stack_required="$((64 * 1024 * 1024))"
