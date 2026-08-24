@@ -58,7 +58,7 @@ nixMake.mkComponent {
       # Fallbacks only: Nix normally locates itself via /proc/self/exe.
       NIX_BIN_DIR = "/nix/var/nix/profiles/default/bin";
       NIX_MAN_DIR = "/nix/var/nix/profiles/default/share/man";
-      HAVE_MIMALLOC = 1;
+      HAVE_MIMALLOC = 0;
       HAVE_SENTRY = nixMake.config.sentry;
       HAVE_OTEL = nixMake.config.otel;
     }
