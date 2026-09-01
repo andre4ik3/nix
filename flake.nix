@@ -513,7 +513,7 @@
         system:
         let
           pkgs = nixpkgsFor.${system}.native;
-          opener = if pkgs.stdenv.isDarwin then "open" else "xdg-open";
+          opener = if pkgs.stdenv.hostPlatform.isDarwin then "open" else "xdg-open";
         in
         {
           open-manual = {
