@@ -228,7 +228,7 @@ nixComponents.callPackage (
 
         cdToBuildDir() {
             if [[ ! -e build.ninja ]]; then
-                cd build
+                cd "$mesonBuildDir"
             fi
         }
 
@@ -259,6 +259,7 @@ nixComponents.callPackage (
       # Remove when gdb fix is rolled out everywhere.
       separateDebugInfo = false;
 
+      inherit (nixComponents.nix-cli) mesonBuildDir;
       mesonBuildType = "debugoptimized";
 
       env = {

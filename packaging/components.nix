@@ -113,6 +113,9 @@ let
     };
 
   mesonLayer = finalAttrs: prevAttrs: {
+    # Keep generated files separate from source directories such as libstore/build.
+    mesonBuildDir = "meson-build";
+
     # NOTE:
     # As of https://github.com/NixOS/nixpkgs/blob/8baf8241cea0c7b30e0b8ae73474cb3de83c1a30/pkgs/by-name/me/meson/setup-hook.sh#L26,
     # `mesonBuildType` defaults to `plain` if not specified. We want our Nix-built binaries to be optimized by default.
