@@ -118,7 +118,7 @@ if get_option('html-manual')
           # Copy source to build directory, excluding the build directory itself
           # (which is present when built as an individual component).
           # Use tar with --dereference to copy symlink targets (e.g., JSON examples from tests).
-          (cd @CURRENT_SOURCE_DIR@ && find . -mindepth 1 -maxdepth 1 ! -name build | tar -c --dereference -T - -f -) | (cd @2@ && tar -xf -)
+          (cd @CURRENT_SOURCE_DIR@ && find . -mindepth 1 -maxdepth 1 ! -samefile "@2@" | tar -c --dereference -T - -f -) | (cd @2@ && tar -xf -)
           chmod -R u+w @2@
           find @2@ -name '*.drv' -delete
           (cd @2@; RUST_LOG=warn @1@ build -d @2@ 3>&2 2>&1 1>&3) | { grep -Fv "because fragment resolution isn't implemented" || :; } 3>&2 2>&1 1>&3

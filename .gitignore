@@ -1,5 +1,6 @@
-# Default meson build dir
+# Meson build directories
 /build
+/meson-build
 # Meson creates this file too
 src/.wraplock
 # Python bytecode (clang-tidy runner scripts)
