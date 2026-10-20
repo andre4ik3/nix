@@ -109,6 +109,17 @@ rec {
             # Same for all components; nix-util is an arbitrary pick
             (nix.appendPatches [ pkgs.emptyFile ]).libs.nix-util.src;
         };
+
+    packaging-import =
+      let
+        components = import ../../.. { inherit pkgs; };
+        crossPkgs = pkgs.pkgsCross.aarch64-multiplatform;
+        crossComponents = import ../../.. { pkgs = crossPkgs; };
+      in
+      assert components.nix-cli.stdenv.drvPath == pkgs.stdenv.drvPath;
+      assert components.nix-cli.drvPath == nixComponents.nix-cli.drvPath;
+      assert crossComponents.nix-cli.stdenv.hostPlatform.config == crossPkgs.stdenv.hostPlatform.config;
+      pkgs.emptyFile;
   };
 
   disable =

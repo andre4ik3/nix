@@ -131,134 +131,14 @@
         a given `pkgs` and `getStdenv`.
       */
       packageSetsFor =
-        let
-          /**
-            Removes a prefix from the attribute names of a set of splices.
-            This is a completely uninteresting and exists for compatibility only.
-
-            Example:
-            ```nix
-            renameSplicesFrom "pkgs" { pkgsBuildBuild = ...; ... }
-            => { buildBuild = ...; ... }
-            ```
-          */
-          renameSplicesFrom = prefix: x: {
-            buildBuild = x."${prefix}BuildBuild";
-            buildHost = x."${prefix}BuildHost";
-            buildTarget = x."${prefix}BuildTarget";
-            hostHost = x."${prefix}HostHost";
-            hostTarget = x."${prefix}HostTarget";
-            targetTarget = x."${prefix}TargetTarget";
-          };
-
-          /**
-            Adds a prefix to the attribute names of a set of splices.
-            This is a completely uninteresting and exists for compatibility only.
-
-            Example:
-            ```nix
-            renameSplicesTo "self" { buildBuild = ...; ... }
-            => { selfBuildBuild = ...; ... }
-            ```
-          */
-          renameSplicesTo = prefix: x: {
-            "${prefix}BuildBuild" = x.buildBuild;
-            "${prefix}BuildHost" = x.buildHost;
-            "${prefix}BuildTarget" = x.buildTarget;
-            "${prefix}HostHost" = x.hostHost;
-            "${prefix}HostTarget" = x.hostTarget;
-            "${prefix}TargetTarget" = x.targetTarget;
-          };
-
-          /**
-            Takes a function `f` and returns a function that applies `f` pointwise to each splice.
-
-            Example:
-            ```nix
-            mapSplices (x: x * 10) { buildBuild = 1; buildHost = 2; ... }
-            => { buildBuild = 10; buildHost = 20; ... }
-            ```
-          */
-          mapSplices =
-            f:
-            {
-              buildBuild,
-              buildHost,
-              buildTarget,
-              hostHost,
-              hostTarget,
-              targetTarget,
-            }:
-            {
-              buildBuild = f buildBuild;
-              buildHost = f buildHost;
-              buildTarget = f buildTarget;
-              hostHost = f hostHost;
-              hostTarget = f hostTarget;
-              targetTarget = f targetTarget;
-            };
-
-        in
-        args@{
-          pkgs,
-          getStdenv ? pkgs: pkgs.stdenv,
-        }:
-        let
-          nixComponentsSplices = mapSplices (
-            pkgs': (packageSetsFor (args // { pkgs = pkgs'; })).nixComponents
-          ) (renameSplicesFrom "pkgs" pkgs);
-          nixDependenciesSplices = mapSplices (
-            pkgs': (packageSetsFor (args // { pkgs = pkgs'; })).nixDependencies
-          ) (renameSplicesFrom "pkgs" pkgs);
-
-          # A new scope, so that we can use `callPackage` to inject our own interdependencies
-          # without "polluting" the top level "`pkgs`" attrset.
-          # This also has the benefit of providing us with a distinct set of packages
-          # we can iterate over.
-          nixComponents =
-            lib.makeScopeWithSplicing'
-              {
-                inherit (pkgs) splicePackages;
-                inherit (nixDependencies) newScope;
-              }
-              {
-                otherSplices = renameSplicesTo "self" nixComponentsSplices;
-                f = import ./packaging/components.nix {
-                  inherit (pkgs) lib;
-                  inherit officialRelease;
-                  inherit pkgs;
-                  src = self;
-                  maintainers = [ ];
-                };
-              };
-
-          # The dependencies are in their own scope, so that they don't have to be
-          # in Nixpkgs top level `pkgs` or `nixComponents2`.
-          nixDependencies =
-            lib.makeScopeWithSplicing'
-              {
-                inherit (pkgs) splicePackages;
-                inherit (pkgs) newScope; # layered directly on pkgs, unlike nixComponents2 above
-              }
-              {
-                otherSplices = renameSplicesTo "self" nixDependenciesSplices;
-                f = import ./packaging/dependencies.nix {
-                  inherit inputs pkgs;
-                  stdenv = getStdenv pkgs;
-                };
-              };
-
-          # If the package set is largely empty, we should(?) return empty sets
-          # This is what most package sets in Nixpkgs do. Otherwise, we get
-          # an error message that indicates that some stdenv attribute is missing,
-          # and indeed it will be missing, as seemingly `pkgsTargetTarget` is
-          # very incomplete.
-          fixup = lib.mapAttrs (k: v: if !(pkgs ? nix) then { } else v);
-        in
-        fixup {
-          inherit nixDependencies;
-          inherit nixComponents;
-        };
+        args:
+        import ./packaging/package-sets.nix (
+          {
+            inherit inputs officialRelease lib;
+            src = self;
+          }
+          // args
+        );
 
       overlayFor =
         getStdenv: final: prev:
