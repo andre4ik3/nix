@@ -53,6 +53,22 @@ curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 On [NixOS], we recommend following our [dedicated installation guide][nixos-install].
 We also provide both [Amazon Machine Images][amis] (AMIs) and [ISOs] for using Determinate on NixOS.
 
+## Packaging with your Nixpkgs
+
+Import the repository with an existing package set:
+
+```nix
+let
+  nixComponents = import nixSrc { inherit pkgs; };
+in
+nixComponents.nix-everything
+```
+
+This applies the fork's dependency overrides without importing another Nixpkgs.
+The pinned Boehm GC source comes from this repository's `flake.lock`.
+Use `nixComponents.nix-cli` for the CLI without tests, or `nixComponents.overrideScope`
+to customize components.
+
 ## Other resources
 
 Nix was created by [Eelco Dolstra][eelco] and developed as the subject of his 2006 PhD thesis, [The Purely Functional Software Deployment Model][thesis].

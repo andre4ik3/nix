@@ -16,6 +16,9 @@ in
 scope: {
   inherit stdenv;
 
+  # https://github.com/NixOS/nix/issues/16180: URL parsing tests fail with Boost 1.91.
+  boost = pkgs.boost189;
+
   mimalloc =
     (
       if lib.versionAtLeast pkgs.mimalloc.version "3.3.2" then
