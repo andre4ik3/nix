@@ -11,9 +11,15 @@ extern "C" void __cxa_throw(void * exc, std::type_info * tinfo, void (*dest)(voi
     if (is_logic_error(tinfo))
         abort_on_exception(exc, tinfo);
 
-    static auto * orig = (cxa_throw_type) dlsym(RTLD_NEXT, "__cxa_throw");
-    if (!orig)
-        abort();
+    static auto * orig = [] {
+        auto * next = (cxa_throw_type) dlsym(RTLD_NEXT, "__cxa_throw");
+        // --as-needed consumers can load the C++ runtime before libnixutil.
+        if (!next)
+            next = (cxa_throw_type) dlsym(RTLD_DEFAULT, "__cxa_throw");
+        if (!next || next == &__cxa_throw)
+            abort();
+        return next;
+    }();
 
     orig(exc, tinfo, dest);
 
